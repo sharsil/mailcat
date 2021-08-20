@@ -1,72 +1,32 @@
-from requests_html import HTMLSession
+#!/usr/bin/python3
+
+import base64
+import json
+import random
+import smtplib
+import string as s
+import sys
+import threading
 from time import sleep
+from typing import Dict
 
 import dns.resolver
-import string as s
-import threading
 import requests
-import smtplib
-import random
-import json
-import sys
-import os
-import re
+from requests_html import HTMLSession
 
-#target = sys.argv[1]
-
-if len(sys.argv) != 2:
-    print("\nUsage: python3 {} <target>\n".format(sys.argv[0]))
-    sys.exit(1)
-else:
-    if "@" in sys.argv[1]:
-        target = sys.argv[1].split('@')[0]
-    else:
-        target = sys.argv[1]
-
-uaLst = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"]
-
-banner = r"""
-
-              ,-.                    ^
-             ( (        _,---._ __  / \
-              ) )    .-'       `./ /   \
-             ( (   ,'            `/    /:
-              \ `-"             \'\   / |
-               .              ,  \ \ /  |
-               / @          ,'-`----Y   |
-              (            ;        :   :
-              |  .-.   _,-'         |  /
-              |  | (  (             | /
-              )  (  \  `.___________:/
-              `..'   `--' :mailcat:
-"""
-
-sreq = requests.Session()
-
-global maybeDic
-maybeDic = {}
 
 def randstr(num):
     return ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), num))
 
-def sleeper(sList, s_min, s_max):
 
+def sleeper(sList, s_min, s_max):
     for ind in sList:
         if sList.index(ind) < (len(sList) - 1):
             print("less", sList.index(ind))
             sleep(random.uniform(s_min, s_max))
 
-#sleeper(l, 2, 4)
 
 def code250(mailProvider, target):
-
     target = target
     providerLst = []
 
@@ -88,41 +48,40 @@ def code250(mailProvider, target):
         code, message = server.rcpt(targetMail)
 
         if code == 250:
-            #print("[+] Success with {}".format(targetMail))
             providerLst.append(targetMail)
             return providerLst
 
     except Exception as e:
-        #print(e)
         pass
 
-def gmail(maybeDic):
+    return []
 
+
+def gmail(target) -> Dict:
+    result = {}
     gmailChkLst = code250("gmail.com", target)
-
     if gmailChkLst:
-        maybeDic["Google"] = gmailChkLst[0]
-        #print("[+] Success with {}".format(gmailChkLst[0]))
+        result["Google"] = gmailChkLst[0]
+    return result
 
-def yandex(maybeDic):
 
+def yandex(target) -> Dict:
+    result = {}
     yaAliasesLst = ["yandex.by",
                     "yandex.kz",
                     "yandex.ua",
                     "yandex.com",
                     "ya.ru"]
-
     yaChkLst = code250("yandex.ru", target)
-
     if yaChkLst:
-
         yaAliasesLst = ['{}@{}'.format(target, yaAlias) for yaAlias in yaAliasesLst]
         yaMails = list(set(yaChkLst + yaAliasesLst))
-        maybeDic["Yandex"] = yaMails
-        #print('\n'.join(["[+] Success with {}".format(yaMail) for yaMail in yaMails]))
+        result["Yandex"] = yaMails
+    return result
 
-def proton(maybeDic):
 
+def proton(target) -> Dict:
+    result = {}
     '''
     protonMails = []
     protonDomainsLst = ["protonmail.com",
@@ -141,67 +100,73 @@ def proton(maybeDic):
     if protonMails:
         print('\n'.join(["[+] Success with {}".format(protonMail) for protonMail in protonMails]))'''
 
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36'}
 
     protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
     protonSucc = []
+    sreq = requests.Session()
 
     for proton_domain in protonLst:
         proton_mail = "{}@{}".format(target, proton_domain)
-        #check_prot_mail = requests.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail), headers=headers)
-        check_prot_mail = sreq.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail), headers=headers, timeout=5)
+        # check_prot_mail = requests.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail), headers=headers)
+        check_prot_mail = sreq.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail),
+                                   headers=headers, timeout=5)
         if check_prot_mail.text != "No key found":
             protonSucc.append(proton_mail)
-            #print("[+] Success with {}".format(proton_mail))
 
     if protonSucc:
-        maybeDic["Proton"] = protonSucc
+        result["Proton"] = protonSucc
 
-def mailRu(maybeDic):
+    return result
 
-    #headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0', 'Referer': 'https://account.mail.ru/signup?from=main&rf=auth.mail.ru'}
 
+def mailRu(target) -> Dict:
+    result = {}
+
+    # headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0', 'Referer': 'https://account.mail.ru/signup?from=main&rf=auth.mail.ru'}
     mailRU = ["mail.ru", "bk.ru", "inbox.ru", "list.ru", "internet.ru"]
     mailRuSucc = []
+    sreq = requests.Session()
 
     for maildomain in mailRU:
-
         try:
-
             headers = {'User-Agent': random.choice(uaLst)}
             mailruMail = "{}@{}".format(target, maildomain)
             data = {'email': mailruMail}
 
-            #chkMailRU = requests.post('https://account.mail.ru/api/v1/user/exists', headers=headers, data=data)
+            # chkMailRU = requests.post('https://account.mail.ru/api/v1/user/exists', headers=headers, data=data)
             chkMailRU = sreq.post('https://account.mail.ru/api/v1/user/exists', headers=headers, data=data, timeout=5)
 
             if chkMailRU.status_code == 200:
                 exists = chkMailRU.json()['body']['exists']
                 if exists:
                     mailRuSucc.append(mailruMail)
-                    #print("[+] Success with {}".format(mailruMail))
 
         except Exception as e:
-            #print(e)
             pass
 
         sleep(random.uniform(0.5, 2))
 
     if mailRuSucc:
-       maybeDic["MailRU"] = mailRuSucc
+        result["MailRU"] = mailRuSucc
 
-def rambler(maybeDic): # basn risk
+    return result
+
+
+def rambler(target) -> Dict:  # basn risk
+    result = {}
 
     ramblerMail = ["rambler.ru", "lenta.ru", "autorambler.ru", "myrambler.ru", "ro.ru", "rambler.ua"]
     ramblerSucc = []
+    sreq = requests.Session()
 
     for maildomain in ramblerMail:
 
         try:
-
             targetMail = "{}@{}".format(target, maildomain)
 
-            #reqID = ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), 20))
+            # reqID = ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), 20))
             reqID = randstr(20)
             userAgent = random.choice(uaLst)
             ramblerChkURL = "https://id.rambler.ru:443/jsonrpc"
@@ -209,17 +174,16 @@ def rambler(maybeDic): # basn risk
             #            "Referer": "https://id.rambler.ru/login-20/mail-registration?back=https%3A%2F%2Fmail.rambler.ru%2F&rname=mail&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru",
 
             headers = {"User-Agent": userAgent,
-                        "Referer": "https://id.rambler.ru/login-20/mail-registration?utm_source=head"\
-                                   "&utm_campaign=self_promo&utm_medium=header&utm_content=mail&rname=mail"\
-                                   "&back=https%3A%2F%2Fmail.rambler.ru%2F%3Futm_source%3Dhead%26utm_campaign%3Dself_promo%26utm_medium%3Dheader%26utm_content%3Dmail"\
-                                   "&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru&theme=mail-web",
-                        "Content-Type": "application/json",
-                        "Origin": "https://id.rambler.ru",
-                        "X-Client-Request-Id": reqID}
-
+                       "Referer": "https://id.rambler.ru/login-20/mail-registration?utm_source=head" \
+                                  "&utm_campaign=self_promo&utm_medium=header&utm_content=mail&rname=mail" \
+                                  "&back=https%3A%2F%2Fmail.rambler.ru%2F%3Futm_source%3Dhead%26utm_campaign%3Dself_promo%26utm_medium%3Dheader%26utm_content%3Dmail" \
+                                  "&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru&theme=mail-web",
+                       "Content-Type": "application/json",
+                       "Origin": "https://id.rambler.ru",
+                       "X-Client-Request-Id": reqID}
 
             ramblerJSON = {"method": "Rambler::Id::login_available", "params": [{"login": targetMail}], "rpc": "2.0"}
-            #ramblerChk = requests.post(ramblerChkURL, headers=headers, json=ramblerJSON)
+            # ramblerChk = requests.post(ramblerChkURL, headers=headers, json=ramblerJSON)
             ramblerChk = sreq.post(ramblerChkURL, headers=headers, json=ramblerJSON, timeout=5)
 
             if ramblerChk.status_code == 200:
@@ -227,27 +191,33 @@ def rambler(maybeDic): # basn risk
                     exist = ramblerChk.json()['result']['profile']['status']
                     if exist == "exist":
                         ramblerSucc.append(targetMail)
-                        #print("[+] Success with {}".format(targetMail))
-                    #else:
+                        # print("[+] Success with {}".format(targetMail))
+                    # else:
                     #    print("[-]".format(ramblerChk.text))
                 except KeyError as e:
                     pass
-                    #print(e)
+                    # print(e)
 
-            sleep(random.uniform(4, 6)) # don't reduce
+            sleep(random.uniform(4, 6))  # don't reduce
 
         except Exception as e:
             pass
 
     if ramblerSucc:
-        maybeDic["Rambler"] = ramblerSucc
+        result["Rambler"] = ramblerSucc
 
-def tuta(maybeDic):
+    return result
 
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36'}
+
+def tuta(target) -> Dict:
+    result = {}
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36'}
 
     tutaMail = ["tutanota.com", "tutanota.de", "tutamail.com", "tuta.io", "keemail.me"]
     tutaSucc = []
+    sreq = requests.Session()
 
     for maildomain in tutaMail:
 
@@ -256,14 +226,16 @@ def tuta(maybeDic):
             targetMail = "{}@{}".format(target, maildomain)
             tutaURL = "https://mail.tutanota.com/rest/sys/mailaddressavailabilityservice?_body="
 
-            tutaCheck = sreq.get('{}%7B%22_format%22%3A%220%22%2C%22mailAddress%22%3A%22{}%40{}%22%7D'.format(tutaURL, target, maildomain), headers=headers, timeout=5)
+            tutaCheck = sreq.get(
+                '{}%7B%22_format%22%3A%220%22%2C%22mailAddress%22%3A%22{}%40{}%22%7D'.format(tutaURL, target,
+                                                                                             maildomain),
+                headers=headers, timeout=5)
 
             if tutaCheck.status_code == 200:
                 exists = tutaCheck.json()['available']
 
                 if exists == "0":
                     tutaSucc.append(targetMail)
-                    #print("[+] Success with {}".format(targetMail))
 
             sleep(random.uniform(2, 4))
 
@@ -271,104 +243,118 @@ def tuta(maybeDic):
             pass
 
     if tutaSucc:
-        maybeDic["Tutanota"] = tutaSucc
+        result["Tutanota"] = tutaSucc
 
-def yahoo(maybeDic):
+    return result
+
+
+def yahoo(target) -> Dict:
+    result = {}
 
     yahooURL = "https://login.yahoo.com:443/account/module/create?validateField=yid"
-    yahooCookies = {"B": "10kh9jteu3edn&b=3&s=66", "AS": "v=1&s=wy5fFM96"} # 13 8
-    #yahooCookies = {"B": "{}&b=3&s=66".format(randstr(13)), "AS": "v=1&s={}".format(randstr(8))} # 13 8
+    yahooCookies = {"B": "10kh9jteu3edn&b=3&s=66", "AS": "v=1&s=wy5fFM96"}  # 13 8
+    # yahooCookies = {"B": "{}&b=3&s=66".format(randstr(13)), "AS": "v=1&s={}".format(randstr(8))} # 13 8
     headers = {"User-Agent": random.choice(uaLst),
-                "Accept": "*/*", "Accept-Language": "en-US,en;q=0.5", "Accept-Encoding": "gzip, deflate",
-                "Referer": "https://login.yahoo.com/account/create?.src=ym&.lang=en-US&.intl=us&.done=https%3A%2F%2Fmail.yahoo.com%2Fd&authMechanism=primary&specId=yidReg",
-                "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest", "DNT": "1", "Connection": "close"}
+               "Accept": "*/*", "Accept-Language": "en-US,en;q=0.5", "Accept-Encoding": "gzip, deflate",
+               "Referer": "https://login.yahoo.com/account/create?.src=ym&.lang=en-US&.intl=us&.done=https%3A%2F%2Fmail.yahoo.com%2Fd&authMechanism=primary&specId=yidReg",
+               "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest",
+               "DNT": "1", "Connection": "close"}
 
-    #yahooPOST = {"specId": "yidReg", "crumb": randstr(11), "acrumb": randstr(8), "yid": target} # crumb: 11, acrumb: 8
+    # yahooPOST = {"specId": "yidReg", "crumb": randstr(11), "acrumb": randstr(8), "yid": target} # crumb: 11, acrumb: 8
     yahooPOST = {"specId": "yidReg", "crumb": "bshN8x9qmfJ", "acrumb": "wy5fFM96", "yid": target}
+    sreq = requests.Session()
 
     try:
         yahooChk = sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=5)
 
         if '"IDENTIFIER_EXISTS"' in yahooChk.text:
-            maybeDic["Yahoo"] = "{}@yahoo.com".format(target)
-            #print("[+] Success with {}@yahoo.com".format(target))
+            result["Yahoo"] = "{}@yahoo.com".format(target)
 
     except Exception as e:
         pass
 
-def outlook(maybeDic):
+    return result
 
+
+def outlook(target):
+    result = {}
     liveSucc = []
-
     _sreq = HTMLSession()
-
     headers = {"User-Agent": random.choice(uaLst)}
-
     liveLst = ["outlook.com", "hotmail.com"]
+    url_template = 'https://signup.live.com/?username={}@{}&uaid=f746d3527c20414d8c86fd7f96613d85&lic=1'
 
     for maildomain in liveLst:
-
         try:
-
-            liveChk = _sreq.get('https://signup.live.com/?username={}@{}&uaid=f746d3527c20414d8c86fd7f96613d85&lic=1'.format(target, maildomain), headers=headers)
+            liveChk = _sreq.get(url_template.format(target, maildomain), headers=headers)
             liveChk.html.render(sleep=10)
 
             if "suggLink" in liveChk.html.html:
-                 liveSucc.append("{}@{}".format(target, maildomain))
+                liveSucc.append("{}@{}".format(target, maildomain))
 
         except Exception as e:
-            #print(e)
             pass
 
     if liveSucc:
-        maybeDic["Live"] = liveSucc
+        result["Live"] = liveSucc
 
-def zoho(maybeDic):
+    return result
 
-    headers = {"User-Agent": "User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36",
-                "Referer": "https://www.zoho.com/",
-                "Origin": "https://www.zoho.com"
-            }
+
+def zoho(target):
+    result = {}
+
+    headers = {
+        "User-Agent": "User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36",
+        "Referer": "https://www.zoho.com/",
+        "Origin": "https://www.zoho.com"
+    }
 
     zohoURL = "https://accounts.zoho.com:443/accounts/validate/register.ac"
     zohoPOST = {"username": target, "servicename": "VirtualOffice", "serviceurl": "/"}
+    sreq = requests.Session()
 
     try:
-
         zohoChk = sreq.post(zohoURL, headers=headers, data=zohoPOST, timeout=10)
-
         if zohoChk.status_code == 200:
-            #if "IAM.ERROR.USERNAME.NOT.AVAILABLE" in zohoChk.text:
+            # if "IAM.ERROR.USERNAME.NOT.AVAILABLE" in zohoChk.text:
             #    print("[+] Success with {}@zohomail.com".format(target))
             if zohoChk.json()['error']['username'] == 'This username is taken':
-                maybeDic["Zoho"] = "{}@zohomail.com".format(target)
-                #print("[+] Success with {}@zohomail.com".format(target))
-
+                result["Zoho"] = "{}@zohomail.com".format(target)
+                # print("[+] Success with {}@zohomail.com".format(target))
     except Exception as e:
         pass
 
-def lycos(maybeDic):
+    return result
 
-    lycosURL = "https://registration.lycos.com/usernameassistant.php?validate=1&m_AID=0&t=1625674151843&m_U={}&m_PR=27&m_SESSIONKEY=4kCL5VaODOZ5M5lBF2lgVONl7tveoX8RKmedGRU3XjV3xRX5MqCP2NWHKynX4YL4".format(target)
 
-    headers = { "User-Agent": "User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36",
-                "Referer": "https://registration.lycos.com/register.php?m_PR=27&m_E=7za1N6E_h_nNSmIgtfuaBdmGpbS66MYX7lMDD-k9qlZCyq53gFjU_N12yVxL01F0R_mmNdhfpwSN6Kq6bNfiqQAA",
-                "X-Requested-With": "XMLHttpRequest"}
+def lycos(target):
+    result = {}
+
+    lycosURL = "https://registration.lycos.com/usernameassistant.php?validate=1&m_AID=0&t=1625674151843&m_U={}&m_PR=27&m_SESSIONKEY=4kCL5VaODOZ5M5lBF2lgVONl7tveoX8RKmedGRU3XjV3xRX5MqCP2NWHKynX4YL4".format(
+        target)
+
+    headers = {
+        "User-Agent": "User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36",
+        "Referer": "https://registration.lycos.com/register.php?m_PR=27&m_E=7za1N6E_h_nNSmIgtfuaBdmGpbS66MYX7lMDD-k9qlZCyq53gFjU_N12yVxL01F0R_mmNdhfpwSN6Kq6bNfiqQAA",
+        "X-Requested-With": "XMLHttpRequest"}
+    sreq = requests.Session()
 
     try:
-        #lycosChk = requests.get(lycosURL, headers=headers)
+        # lycosChk = requests.get(lycosURL, headers=headers)
         lycosChk = sreq.get(lycosURL, headers=headers, timeout=10)
 
         if lycosChk.status_code == 200:
             if lycosChk.text == "Unavailable":
-                maybeDic["Lycos"] = "{}@lycos.com".format(target)
-                #print("[+] Success with {}@lycos.com".format(target))
-
+                result["Lycos"] = "{}@lycos.com".format(target)
     except Exception as e:
-        #print(e)
         pass
 
-def eclipso(maybeDic): # high ban risk + false positives after
+    return result
+
+
+def eclipso(target):  # high ban risk + false positives after
+    result = {}
 
     eclipsoSucc = []
 
@@ -384,33 +370,34 @@ def eclipso(maybeDic): # high ban risk + false positives after
                   "eclipso.email"]
 
     headers = {'User-Agent': random.choice(uaLst),
-                'Referer': 'https://www.eclipso.eu/signup/tariff-5',
-                'X-Requested-With': 'XMLHttpRequest'}
+               'Referer': 'https://www.eclipso.eu/signup/tariff-5',
+               'X-Requested-With': 'XMLHttpRequest'}
+    sreq = requests.Session()
 
     for maildomain in eclipsoLst:
-
         try:
-
             targetMail = "{}@{}".format(target, maildomain)
 
-            eclipsoURL = "https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={}".format(targetMail)
+            eclipsoURL = "https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={}".format(
+                targetMail)
             chkEclipso = sreq.get(eclipsoURL, headers=headers, timeout=5)
 
             if chkEclipso.status_code == 200:
                 if '>0<' in chkEclipso.text:
                     eclipsoSucc.append(targetMail)
-                    #print("[+] Success with {}".format(targetMail))
-
         except Exception as e:
-            #print(e)
             pass
 
         sleep(random.uniform(2, 4))
 
     if eclipsoSucc:
-        maybeDic["Eclipso"] = eclipsoSucc
+        result["Eclipso"] = eclipsoSucc
 
-def posteo(maybeDic):
+    return result
+
+
+def posteo(target) -> Dict:
+    result = {}
 
     posteoLst = [
         "posteo.af",
@@ -465,10 +452,12 @@ def posteo(maybeDic):
         "posteo.uk",
         "posteo.us"]
 
-    headers = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
-                'Referer': 'https://posteo.de/en/signup',
-                'X-Requested-With': 'XMLHttpRequest' }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
+        'Referer': 'https://posteo.de/en/signup',
+        'X-Requested-With': 'XMLHttpRequest'}
 
+    sreq = requests.Session()
     try:
 
         eclipsoURL = "https://posteo.de/users/new/check_username?user%5Busername%5D={}".format(target)
@@ -476,45 +465,53 @@ def posteo(maybeDic):
 
         if chkEclipso.status_code == 200:
             if chkEclipso.text == "false":
-                maybeDic["Posteo"] = ["{}@posteo.net".format(target), "~50 aliases: https://posteo.de/en/help/which-domains-are-available-to-use-as-a-posteo-alias-address)"]
+                result["Posteo"] = ["{}@posteo.net".format(target),
+                                    "~50 aliases: https://posteo.de/en/help/which-domains-are-available-to-use-as-a-posteo-alias-address"]
 
     except Exception as e:
         pass
 
-def mailbox(maybeDic): # tor RU
+    return result
+
+
+def mailbox(target) -> Dict:  # tor RU
+    result = {}
 
     mailboxURL = "https://register.mailbox.org:443/ajax"
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36"}
     mailboxJSON = {"account_name": target, "action": "validateAccountName"}
 
     existiert = "Der Accountname existiert bereits."
+    sreq = requests.Session()
 
     try:
 
         chkMailbox = sreq.post(mailboxURL, headers=headers, json=mailboxJSON, timeout=10)
 
         if chkMailbox.text == existiert:
-            maybeDic["MailBox"] = "{}@mailbox.org".format(target)
-            #print("[+] Success with {}@mailbox.org".format(target))
+            result["MailBox"] = "{}@mailbox.org".format(target)
+            # print("[+] Success with {}@mailbox.org".format(target))
 
     except Exception as e:
-        #print(e)
+        # print(e)
         pass
 
-def firemail(maybeDic): # tor RU
+
+def firemail(target) -> Dict:  # tor RU
+    result = {}
 
     firemailSucc = []
 
     firemailDomains = ["firemail.at", "firemail.de", "firemail.eu"]
 
-    headers = { 'User-Agent': random.choice(uaLst),
-                'Referer': 'https://firemail.de/E-Mail-Adresse-anmelden',
-                'X-Requested-With': 'XMLHttpRequest' }
+    headers = {'User-Agent': random.choice(uaLst),
+               'Referer': 'https://firemail.de/E-Mail-Adresse-anmelden',
+               'X-Requested-With': 'XMLHttpRequest'}
+    sreq = requests.Session()
 
     for firemailDomain in firemailDomains:
-
         try:
-
             targetMail = "{}@{}".format(target, firemailDomain)
 
             firemailURL = "https://firemail.de/index.php?action=checkAddressAvailability&address={}".format(targetMail)
@@ -523,66 +520,68 @@ def firemail(maybeDic): # tor RU
             if chkFiremail.status_code == 200:
                 if '>0<' in chkFiremail.text:
                     firemailSucc.append("{}".format(targetMail))
-                    #print("[+] Success with {}".format(targetMail))
-
         except Exception as e:
             pass
 
         sleep(random.uniform(2, 4))
 
     if firemailSucc:
-        maybeDic["Firemail"] = firemailSucc
+        result["Firemail"] = firemailSucc
 
-def fastmail(maybeDic): # sanctions against Russia) TOR + 4 min for check in loop(
+
+def fastmail(target) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
+    result = {}
 
     fastmailSucc = []
 
     fastmailLst = [
-            "fastmail.com", "fastmail.cn", "fastmail.co.uk", "fastmail.com.au",
-            "fastmail.de", "fastmail.es", "fastmail.fm", "fastmail.fr",
-            "fastmail.im", "fastmail.in", "fastmail.jp", "fastmail.mx",
-            "fastmail.net", "fastmail.nl", "fastmail.org", "fastmail.se",
-            "fastmail.to", "fastmail.tw", "fastmail.uk", "fastmail.us",
-            "123mail.org", "airpost.net", "eml.cc", "fmail.co.uk",
-            "fmgirl.com", "fmguy.com", "mailbolt.com", "mailcan.com",
-            "mailhaven.com", "mailmight.com", "ml1.net", "mm.st",
-            "myfastmail.com", "proinbox.com", "promessage.com", "rushpost.com",
-            "sent.as", "sent.at", "sent.com", "speedymail.org",
-            "warpmail.net", "xsmail.com", "150mail.com", "150ml.com",
-            "16mail.com", "2-mail.com", "4email.net", "50mail.com",
-            "allmail.net", "bestmail.us", "cluemail.com", "elitemail.org",
-            "emailcorner.net", "emailengine.net", "emailengine.org", "emailgroups.net",
-            "emailplus.org", "emailuser.net", "f-m.fm", "fast-email.com",
-            "fast-mail.org", "fastem.com", "fastemail.us", "fastemailer.com",
-            "fastest.cc", "fastimap.com", "fastmailbox.net", "fastmessaging.com",
-            "fea.st", "fmailbox.com", "ftml.net", "h-mail.us",
-            "hailmail.net", "imap-mail.com", "imap.cc", "imapmail.org",
-            "inoutbox.com", "internet-e-mail.com", "internet-mail.org",
-            "internetemails.net", "internetmailing.net", "jetemail.net",
-            "justemail.net", "letterboxes.org", "mail-central.com", "mail-page.com",
-            "mailandftp.com", "mailas.com", "mailc.net", "mailforce.net",
-            "mailftp.com", "mailingaddress.org", "mailite.com", "mailnew.com",
-            "mailsent.net", "mailservice.ms", "mailup.net", "mailworks.org",
-            "mymacmail.com", "nospammail.net", "ownmail.net", "petml.com",
-            "postinbox.com", "postpro.net", "realemail.net", "reallyfast.biz",
-            "reallyfast.info", "speedpost.net", "ssl-mail.com", "swift-mail.com",
-            "the-fastest.net", "the-quickest.com", "theinternetemail.com",
-            "veryfast.biz", "veryspeedy.net", "yepmail.net", "your-mail.com"]
+        "fastmail.com", "fastmail.cn", "fastmail.co.uk", "fastmail.com.au",
+        "fastmail.de", "fastmail.es", "fastmail.fm", "fastmail.fr",
+        "fastmail.im", "fastmail.in", "fastmail.jp", "fastmail.mx",
+        "fastmail.net", "fastmail.nl", "fastmail.org", "fastmail.se",
+        "fastmail.to", "fastmail.tw", "fastmail.uk", "fastmail.us",
+        "123mail.org", "airpost.net", "eml.cc", "fmail.co.uk",
+        "fmgirl.com", "fmguy.com", "mailbolt.com", "mailcan.com",
+        "mailhaven.com", "mailmight.com", "ml1.net", "mm.st",
+        "myfastmail.com", "proinbox.com", "promessage.com", "rushpost.com",
+        "sent.as", "sent.at", "sent.com", "speedymail.org",
+        "warpmail.net", "xsmail.com", "150mail.com", "150ml.com",
+        "16mail.com", "2-mail.com", "4email.net", "50mail.com",
+        "allmail.net", "bestmail.us", "cluemail.com", "elitemail.org",
+        "emailcorner.net", "emailengine.net", "emailengine.org", "emailgroups.net",
+        "emailplus.org", "emailuser.net", "f-m.fm", "fast-email.com",
+        "fast-mail.org", "fastem.com", "fastemail.us", "fastemailer.com",
+        "fastest.cc", "fastimap.com", "fastmailbox.net", "fastmessaging.com",
+        "fea.st", "fmailbox.com", "ftml.net", "h-mail.us",
+        "hailmail.net", "imap-mail.com", "imap.cc", "imapmail.org",
+        "inoutbox.com", "internet-e-mail.com", "internet-mail.org",
+        "internetemails.net", "internetmailing.net", "jetemail.net",
+        "justemail.net", "letterboxes.org", "mail-central.com", "mail-page.com",
+        "mailandftp.com", "mailas.com", "mailc.net", "mailforce.net",
+        "mailftp.com", "mailingaddress.org", "mailite.com", "mailnew.com",
+        "mailsent.net", "mailservice.ms", "mailup.net", "mailworks.org",
+        "mymacmail.com", "nospammail.net", "ownmail.net", "petml.com",
+        "postinbox.com", "postpro.net", "realemail.net", "reallyfast.biz",
+        "reallyfast.info", "speedpost.net", "ssl-mail.com", "swift-mail.com",
+        "the-fastest.net", "the-quickest.com", "theinternetemail.com",
+        "veryfast.biz", "veryspeedy.net", "yepmail.net", "your-mail.com"]
 
-    headers = { "User-Agent": random.choice(uaLst),
-                "Referer": "https://www.fastmail.com/signup/",
-                "Content-type": "application/json",
-                "X-TrustedClient": "Yes",
-                "Origin": "https://www.fastmail.com"}
+    headers = {"User-Agent": random.choice(uaLst),
+               "Referer": "https://www.fastmail.com/signup/",
+               "Content-type": "application/json",
+               "X-TrustedClient": "Yes",
+               "Origin": "https://www.fastmail.com"}
 
     fastmailURL = "https://www.fastmail.com:443/jmap/setup/"
+    sreq = requests.Session()
 
     for fmdomain in fastmailLst:
-        #print(fastmailLst.index(fmdomain)+1, fmdomain)
+        # print(fastmailLst.index(fmdomain)+1, fmdomain)
 
         fmmail = "{}@{}".format(target, fmdomain)
 
-        fastmailJSON = {"methodCalls": [["Signup/getEmailAvailability", {"email": fmmail}, "0"]], "using": ["https://www.fastmail.com/dev/signup"]}
+        fastmailJSON = {"methodCalls": [["Signup/getEmailAvailability", {"email": fmmail}, "0"]],
+                        "using": ["https://www.fastmail.com/dev/signup"]}
 
         try:
             chkFastmail = sreq.post(fastmailURL, headers=headers, json=fastmailJSON, timeout=5)
@@ -590,42 +589,44 @@ def fastmail(maybeDic): # sanctions against Russia) TOR + 4 min for check in loo
             if chkFastmail.status_code == 200:
                 try:
                     fmJson = chkFastmail.json()['methodResponses'][0][1]['isAvailable']
-
                     if fmJson is False:
                         fastmailSucc.append("{}".format(fmmail))
-                        #print("[+] Success with {}".format(fmmail))
-                        #print('\n'.join(["[+] Success with {}@{}".format(target, posteod) for posteod in posteoLst]))
+                        # print('\n'.join(["[+] Success with {}@{}".format(target, posteod) for posteod in posteoLst]))
 
                 except Exception as e:
                     pass
-                    #print(e)
+                    # print(e)
 
         except Exception as e:
             pass
-            #print(e)
+            # print(e)
 
         sleep(random.uniform(0.5, 1.1))
 
     if fastmailSucc:
-        maybeDic["Fastmail"] = fastmailSucc
+        result["Fastmail"] = fastmailSucc
 
-def startmail(maybeDic): # TOR
+
+def startmail(target) -> Dict:  # TOR
+    result = {}
 
     startmailURL = "https://mail.startmail.com:443/api/AvailableAddresses/{}%40startmail.com".format(target)
-    headers = { "User-Agent": random.choice(uaLst),
-                "X-Requested-With": "1.94.0"}
+    headers = {"User-Agent": random.choice(uaLst),
+               "X-Requested-With": "1.94.0"}
+    sreq = requests.Session()
 
     try:
         chkStartmail = sreq.get(startmailURL, headers=headers, timeout=10)
 
         if chkStartmail.status_code == 404:
-            print("[+] Success with {}@startmail.com".format(target))
-            maybeDic["StartMail"] = "{}@startmail.com".format(target)
+            result["StartMail"] = "{}@startmail.com".format(target)
 
     except:
         pass
 
-def kolab(maybeDic):
+
+def kolab(target) -> Dict:
+    result = {}
 
     kolabSucc = []
 
@@ -699,11 +700,12 @@ def kolab(maybeDic):
     '''
 
     kolabURL = "https://kolabnow.com/api/auth/signup"
-    headers = { "User-Agent": random.choice(uaLst),
-                "Referer": "https://kolabnow.com/signup/individual",
-                "Content-Type": "application/json;charset=utf-8",
-                "X-Test-Payment-Provider": "mollie",
-                "X-Requested-With": "XMLHttpRequest"}
+    headers = {"User-Agent": random.choice(uaLst),
+               "Referer": "https://kolabnow.com/signup/individual",
+               "Content-Type": "application/json;charset=utf-8",
+               "X-Test-Payment-Provider": "mollie",
+               "X-Requested-With": "XMLHttpRequest"}
+    sreq = requests.Session()
 
     kolabStatus = sreq.post(kolabURL, headers={"User-Agent": random.choice(uaLst)}, timeout=10)
 
@@ -715,51 +717,51 @@ def kolab(maybeDic):
         for kolabdomain in kolabLst:
 
             kolabPOST = {"login": target,
-                        "domain": kolabdomain,
-                        "password": kolabpass,
-                        "password_confirmation": kolabpass,
-                        "voucher": "",
-                        "code":"bJDmpWw8sO85KlgSETPWtnViDgQ1S0MO",
-                        "short_code":"VHBZX"}
-
+                         "domain": kolabdomain,
+                         "password": kolabpass,
+                         "password_confirmation": kolabpass,
+                         "voucher": "",
+                         "code": "bJDmpWw8sO85KlgSETPWtnViDgQ1S0MO",
+                         "short_code": "VHBZX"}
 
             try:
-                    #chkKolab = sreq.post(kolabURL, headers=headers, data=kolabPOST)
-                    chkKolab = sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=10)
-                    print(chkKolab.text)
+                # chkKolab = sreq.post(kolabURL, headers=headers, data=kolabPOST)
+                chkKolab = sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=10)
+                print(chkKolab.text)
 
-                    if chkKolab.status_code == 200:
+                if chkKolab.status_code == 200:
 
-                        kolabJSON = chkKolab.json()
-                        if kolabJSON["errors"]["login"] == kolabsuc:
-                            print("[+] Success with {}@{}".format(target, kolabdomain))
-
-                        else:
-                            if kolabJSON["errors"]:
-                                print(kolabJSON["errors"])
+                    kolabJSON = chkKolab.json()
+                    if kolabJSON["errors"]["login"] == kolabsuc:
+                        # print("[+] Success with {}@{}".format(target, kolabdomain))
+                        pass
+                    else:
+                        if kolabJSON["errors"]:
+                            print(kolabJSON["errors"])
 
 
             except Exception as e:
                 pass
 
-def bigmir(maybeDic):
+
+def bigmir(target) -> Dict:
+    result = {}
 
     bigmirSucc = []
     bigmirMail = ["i.ua", "ua.fm", "email.ua"]
+    sreq = requests.Session()
 
     for maildomain in bigmirMail:
-
         try:
-
             bigmirChkJS = "https://passport.i.ua/js/free.js?15908746259240-xml"
 
             headers = {
-                    'Pragma': 'no-cache',
-                    'Origin': 'https://passport.i.ua',
-                    'User-Agent': random.choice(uaLst),
-                    'Content-Type': 'application/octet-stream',
-                    'Referer': 'https://passport.i.ua/registration/'
-                }
+                'Pragma': 'no-cache',
+                'Origin': 'https://passport.i.ua',
+                'User-Agent': random.choice(uaLst),
+                'Content-Type': 'application/octet-stream',
+                'Referer': 'https://passport.i.ua/registration/'
+            }
 
             bm_data = "login={}@{}".format(target, maildomain)
 
@@ -770,34 +772,33 @@ def bigmir(maybeDic):
 
                 if "'free': false" in bigmirChk.text:
                     bigmirSucc.append("{}@{}".format(target, maildomain))
-                    #print("[+] Success with {}@{}".format(target, maildomain))
 
             sleep(random.uniform(2, 4))
 
         except Exception as e:
             pass
-            #print(e)
 
     if bigmirSucc:
-        maybeDic["Bigmir"] = bigmirSucc
+        result["Bigmir"] = bigmirSucc
 
-def tutby(maybeDic): # Down
+
+def tutby(target) -> Dict:  # Down
+    result = {}
+    sreq = requests.Session()
 
     try:
-
-        import base64
 
         target64 = base64.b64encode(target)
         tutbyChkURL = "https://profile.tut.by/requests/index.php"
 
         headers = {
-                'Pragma': 'no-cache',
-                'Origin': 'https://profile.tut.by',
-                'User-Agent': random.choice(uaLst),
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'Referer': 'https://profile.tut.by/register.html',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+            'Pragma': 'no-cache',
+            'Origin': 'https://profile.tut.by',
+            'User-Agent': random.choice(uaLst),
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Referer': 'https://profile.tut.by/register.html',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
 
         tutbyData = "action=lgval&l={}".format(target64)
         tutbyChk = sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=10)
@@ -812,15 +813,20 @@ def tutby(maybeDic): # Down
     except Exception as e:
         pass
 
-def xmail(maybeDic):
+    return result
 
+
+def xmail(target) -> Dict:
+    result = {}
+
+    sreq = requests.Session()
     xmailURL = "https://xmail.net:443/app/signup/checkusername"
-    headers = { "User-Agent": random.choice(uaLst),
-                "Accept": "application/json, text/javascript, */*",
-                "Referer": "https://xmail.net/app/signup",
-                "Content-Type": "application/x-www-form-urlencoded",
-                "X-Requested-With": "XMLHttpRequest",
-                "Connection": "close"}
+    headers = {"User-Agent": random.choice(uaLst),
+               "Accept": "application/json, text/javascript, */*",
+               "Referer": "https://xmail.net/app/signup",
+               "Content-Type": "application/x-www-form-urlencoded",
+               "X-Requested-With": "XMLHttpRequest",
+               "Connection": "close"}
 
     xmailPOST = {"username": target, "firstname": '', "lastname": ''}
 
@@ -829,24 +835,28 @@ def xmail(maybeDic):
         xmailChk = sreq.post(xmailURL, headers=headers, data=xmailPOST, timeout=10).json()
 
         if not xmailChk['username']:
-            maybeDic["Xmail"] = "{}@xmail.net".format(target)
-            print("[+] Success with {}@xmail.net".format(target))
+            result["Xmail"] = "{}@xmail.net".format(target)
 
     except Exception as e:
         pass
-        #print(e)
 
-def ukrnet(maybeDic):
+    return result
+
+
+def ukrnet(target) -> Dict:
+    result = {}
 
     ukrnet_reg_urk = "https://accounts.ukr.net:443/registration"
-    headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "DNT": "1",
-                "Connection": "close",
-                "Upgrade-Insecure-Requests": "1"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "DNT": "1",
+        "Connection": "close",
+        "Upgrade-Insecure-Requests": "1"}
 
+    sreq = requests.Session()
     try:
 
         get_reg_ukrnet = sreq.get(ukrnet_reg_urk, headers=headers, timeout=10)
@@ -862,52 +872,54 @@ def ukrnet(maybeDic):
 
                 if ukrnetChk.status_code == 200:
                     if not ukrnetChk.json()['available']:
-                        maybeDic["UkrNet"] = "{}@ukr.net".format(target)
+                        result["UkrNet"] = "{}@ukr.net".format(target)
                         print("[+] Success with {}@ukr.net".format(target))
 
     except Exception as e:
-        #print(e)
+        # print(e)
         pass
 
-def runbox(maybeDic):
+
+def runbox(target) -> Dict:
+    result = {}
 
     runboxSucc = []
-
     runboxLst = ["mailhost.work",
-            "mailhouse.biz",
-            "messagebox.email",
-            "offshore.rocks",
-            "rbox.co",
-            "rbox.me",
-            "rbx.email",
-            "rbx.life",
-            "rbx.run",
-            "rnbx.uk",
-            "runbox.at",
-            "runbox.biz",
-            "runbox.bz",
-            "runbox.ch",
-            "runbox.co",
-            "runbox.co.in",
-            "runbox.com",
-            "runbox.dk",
-            "runbox.email",
-            "runbox.eu",
-            "runbox.is",
-            "runbox.it",
-            "runbox.ky",
-            "runbox.li",
-            "runbox.me",
-            "runbox.nl",
-            "runbox.no",
-            "runbox.uk",
-            "runbox.us",
-            "xobnur.uk"]
+                 "mailhouse.biz",
+                 "messagebox.email",
+                 "offshore.rocks",
+                 "rbox.co",
+                 "rbox.me",
+                 "rbx.email",
+                 "rbx.life",
+                 "rbx.run",
+                 "rnbx.uk",
+                 "runbox.at",
+                 "runbox.biz",
+                 "runbox.bz",
+                 "runbox.ch",
+                 "runbox.co",
+                 "runbox.co.in",
+                 "runbox.com",
+                 "runbox.dk",
+                 "runbox.email",
+                 "runbox.eu",
+                 "runbox.is",
+                 "runbox.it",
+                 "runbox.ky",
+                 "runbox.li",
+                 "runbox.me",
+                 "runbox.nl",
+                 "runbox.no",
+                 "runbox.uk",
+                 "runbox.us",
+                 "xobnur.uk"]
 
-    headers = { "User-Agent": random.choice(uaLst),
-                "Origin": "https://runbox.com",
-                "Referer": "https://runbox.com/signup?runbox7=1"}
+    headers = {"User-Agent": random.choice(uaLst),
+               "Origin": "https://runbox.com",
+               "Referer": "https://runbox.com/signup?runbox7=1"}
 
+    sreq = requests.Session()
     for rboxdomain in runboxLst:
 
         data = {"type": "person", "company": "", "first_name": "", "last_name": "", "user": target,
@@ -918,49 +930,96 @@ def runbox(maybeDic):
                 "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
                 "account_number": "", "timezone": "undefined", "runbox7": "1"}
 
-
         chkRunbox = sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=5)
 
         if chkRunbox.status_code == 200:
             if "The specified username is already taken" in chkRunbox.text:
                 runboxSucc.append("{}@{}".format(target, rboxdomain))
-                print("[+] Success with {}@{}".format(target, rboxdomain))
 
         sleep(random.uniform(1, 2.1))
 
     if runboxSucc:
-        maybeDic["Runbox"] = runboxSucc
+        result["Runbox"] = runboxSucc
+
+    return result
+
 
 ####################################################################################
 
-if __name__ == '__main__':
+def print_results(checker, target):
+    checker_name = checker.__name__
+    print(f'Running {checker_name} checker for {target}...')
+    res = checker(target)
 
-    for color, part in zip(range(75,89), banner.split('\n')[1:]):
+    try:
+        if not res:
+            print(f'No results for {checker_name}')
+            res = {}
+    except Exception as e:
+        print(f'Error while checking {checker_name}: {e}')
+        return
+
+    for provider, emails in res.items():
+        print(f'{provider}: ')
+        if isinstance(emails, str):
+            emails = [emails]
+        for email in emails:
+            print(f'*\t{email}')
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print("\nUsage: python3 {} <target>\n".format(sys.argv[0]))
+        sys.exit(1)
+
+    target = sys.argv[1]
+    if "@" in target:
+        target = target.split('@')[0]
+
+    uaLst = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"]
+
+    banner = r"""
+    
+                  ,-.                    ^
+                 ( (        _,---._ __  / \
+                  ) )    .-'       `./ /   \
+                 ( (   ,'            `/    /:
+                  \ `-"             \'\   / |
+                   .              ,  \ \ /  |
+                   / @          ,'-`----Y   |
+                  (            ;        :   :
+                  |  .-.   _,-'         |  /
+                  |  | (  (             | /
+                  )  (  \  `.___________:/
+                  `..'   `--' :mailcat:
+    """
+
+    for color, part in zip(range(75, 89), banner.split('\n')[1:]):
         print("\033[1;38;5;{}m{}\033[0m".format(color, part))
         sleep(0.1337)
 
-    checkList = [gmail(maybeDic), yandex(maybeDic), proton(maybeDic), mailRu(maybeDic),
-                rambler(maybeDic), tuta(maybeDic), yahoo(maybeDic), outlook(maybeDic),
-                zoho(maybeDic), eclipso(maybeDic), posteo(maybeDic), mailbox(maybeDic),
-                firemail(maybeDic), fastmail(maybeDic), startmail(maybeDic),
-                bigmir(maybeDic), tutby(maybeDic), xmail(maybeDic), ukrnet(maybeDic),
-                runbox(maybeDic)] # -kolab -lycos(false((( )
+    checkers = [gmail, yandex, proton, mailRu,
+                rambler, tuta, yahoo, outlook,
+                zoho, eclipso, posteo, mailbox,
+                firemail, fastmail, startmail,
+                bigmir, tutby, xmail, ukrnet,
+                runbox]  # -kolab -lycos(false((( )
 
-    #checkList = [outlook(maybeDic)] # USE IF FOR SINGLE CHECK
+    # checkers = [outlook] # USE IF FOR SINGLE CHECK
 
     threads = []
-
-    for checker in checkList:
-        t = threading.Thread(target=checker)
+    for checker in checkers:
+        t = threading.Thread(target=print_results, args=(checker, target,))
         t.start()
-        threads.append(checker)
+        threads.append(t)
 
-    if maybeDic:
-        maybeDic = json.dumps(maybeDic)
-        #print(maybeDic)
-        for m_provider in maybeDic::
-            #print("\n[+] {}:".format(m_provider))
-            print("\n  {}:".format(m_provider))
-            for mail in maybeDic:[m_provider]:
-                print("* {}".format(mail))
-
+    for t in threads:
+        t.join()
