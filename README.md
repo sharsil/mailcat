@@ -1,6 +1,8 @@
 # mailcat
 
----
+<p align="center">
+	<img src=./mailcat.png" height="200"/>
+</p>
 
 The cat who can find existing email addresses by nickname.
 
@@ -13,6 +15,8 @@ It's recommended to run script through Tor and proxies, for example, with proxyc
 	proxychains4 -q python3 mailcat.py username
 
 ## Supported providers
+
+Total 22 providers, > 60 domains and > 100 aliases.
 
 | Name                | Domains                                | Method            |
 | ------------------- | -------------------------------------- | ----------------- |

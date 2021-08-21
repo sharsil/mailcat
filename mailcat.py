@@ -807,8 +807,8 @@ def tutby(target) -> Dict:  # Down
             exist = '[{"success":true}]'
 
             if exist == tutbyChk.text:
-                print("[+] Success with {}@tut.by".format(target))
-
+                # print("[+] Success with {}@tut.by".format(target))
+                pass
 
     except Exception as e:
         pass
@@ -873,10 +873,7 @@ def ukrnet(target) -> Dict:
                 if ukrnetChk.status_code == 200:
                     if not ukrnetChk.json()['available']:
                         result["UkrNet"] = "{}@ukr.net".format(target)
-                        print("[+] Success with {}@ukr.net".format(target))
-
     except Exception as e:
-        # print(e)
         pass
 
 
