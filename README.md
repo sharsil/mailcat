@@ -1,10 +1,12 @@
 # mailcat
 
 <p align="center">
-	<img src=./mailcat.png" height="200"/>
+	<img src="https://github.com/sharsil/mailcat/blob/main/mailcat.png?raw=true" height="200"/>
 </p>
 
-The cat who can find existing email addresses by nickname.
+---
+
+The only cat who can find existing email addresses by nickname.
 
 ## Usage
 
