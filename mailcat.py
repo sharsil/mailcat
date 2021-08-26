@@ -955,6 +955,27 @@ def runbox(target, req_session_fun) -> Dict:
 
 ####################################################################################
 
+def show_banner():
+    banner = r"""
+
+                  ,-.                    ^
+                 ( (        _,---._ __  / \
+                  ) )    .-'       `./ /   \
+                 ( (   ,'            `/    /:
+                  \ `-"             \'\   / |
+                   .              ,  \ \ /  |
+                   / @          ,'-`----Y   |
+                  (            ;        :   :
+                  |  .-.   _,-'         |  /
+                  |  | (  (             | /
+                  )  (  \  `.___________:/
+                  `..'   `--' :mailcat:
+    """
+    for color, part in zip(range(75, 89), banner.split('\n')[1:]):
+        print("\033[1;38;5;{}m{}\033[0m".format(color, part))
+        sleep(0.1337)
+
+
 def print_results(checker, target, req_session_fun):
     checker_name = checker.__name__
     print(f'Running {checker_name} checker for {target}...')
@@ -969,11 +990,11 @@ def print_results(checker, target, req_session_fun):
         return
 
     for provider, emails in res.items():
-        print(f'{provider}: ')
+        print(f'\033[1;38;5;75m{provider}: \033[0m')
         if isinstance(emails, str):
             emails = [emails]
         for email in emails:
-            print(f'*\t{email}')
+            print(f'*  {email}')
 
 
 if __name__ == '__main__':
@@ -992,8 +1013,16 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "username",
+        nargs='*',
         metavar="USERNAME",
         help="One username to search emails by",
+    )
+    parser.add_argument(
+        '-l',
+        '--list',
+        action="store_true",
+        default=False,
+        help="List all the supported providers",
     )
     parser.add_argument(
         '-s',
@@ -1010,7 +1039,28 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
+    all_checkers = [gmail, yandex, proton, mailRu,
+                rambler, tuta, yahoo, outlook,
+                zoho, eclipso, posteo, mailbox,
+                firemail, fastmail, startmail,
+                bigmir, tutby, xmail, ukrnet,
+                runbox]  # -kolab -lycos(false((( )
+
+    if not args.silent:
+        show_banner()
+
+    if args.list:
+        print('Supported email providers: ')
+        print('  ' + ', '.join(map(lambda f: f.__name__, all_checkers)))
+
     target = args.username
+
+    if len(target) != 1:
+        print('Please, specify one username to search!')
+        sys.exit(1)
+    else:
+        target = target[0]
+
     if "@" in target:
         target = target.split('@')[0]
 
@@ -1023,34 +1073,6 @@ if __name__ == '__main__':
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"]
-
-    banner = r"""
-    
-                  ,-.                    ^
-                 ( (        _,---._ __  / \
-                  ) )    .-'       `./ /   \
-                 ( (   ,'            `/    /:
-                  \ `-"             \'\   / |
-                   .              ,  \ \ /  |
-                   / @          ,'-`----Y   |
-                  (            ;        :   :
-                  |  .-.   _,-'         |  /
-                  |  | (  (             | /
-                  )  (  \  `.___________:/
-                  `..'   `--' :mailcat:
-    """
-
-    if not args.silent:
-        for color, part in zip(range(75, 89), banner.split('\n')[1:]):
-            print("\033[1;38;5;{}m{}\033[0m".format(color, part))
-            sleep(0.1337)
-
-    all_checkers = [gmail, yandex, proton, mailRu,
-                rambler, tuta, yahoo, outlook,
-                zoho, eclipso, posteo, mailbox,
-                firemail, fastmail, startmail,
-                bigmir, tutby, xmail, ukrnet,
-                runbox]  # -kolab -lycos(false((( )
 
     if args.providers:
         pset = set(args.providers)
