@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import argparse
 import base64
 import json
 import random
@@ -25,6 +26,11 @@ def sleeper(sList, s_min, s_max):
             print("less", sList.index(ind))
             sleep(random.uniform(s_min, s_max))
 
+def via_tor():
+    session = requests.Session()
+    session.proxies = {'http':  'socks5://127.0.0.1:9050',
+                       'https': 'socks5://127.0.0.1:9050'}
+    return session
 
 def code250(mailProvider, target):
     target = target
@@ -105,7 +111,7 @@ def proton(target) -> Dict:
 
     protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
     protonSucc = []
-    sreq = requests.Session()
+    sreq = via_tor()
 
     for proton_domain in protonLst:
         proton_mail = "{}@{}".format(target, proton_domain)
@@ -965,11 +971,34 @@ def print_results(checker, target):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("\nUsage: python3 {} <target>\n".format(sys.argv[0]))
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=f"Mailcat",
+    )
+    parser.add_argument(
+        '-p',
+        '--provider',
+        action="append",
+        metavar='<mail providers names>',
+        dest="providers",
+        default=[],
+        help="Specify one or more mail providers by name",
+    )
+    parser.add_argument(
+        "username",
+        metavar="USERNAME",
+        help="One username to search emails by",
+    )
+    parser.add_argument(
+        '-s',
+        '--silent',
+        action="store_true",
+        default=False,
+        help="Hide wonderful mailcat intro animation",
+    )
+    args = parser.parse_args()
 
-    target = sys.argv[1]
+    target = args.username
     if "@" in target:
         target = target.split('@')[0]
 
@@ -999,16 +1028,25 @@ if __name__ == '__main__':
                   `..'   `--' :mailcat:
     """
 
-    for color, part in zip(range(75, 89), banner.split('\n')[1:]):
-        print("\033[1;38;5;{}m{}\033[0m".format(color, part))
-        sleep(0.1337)
+    if not args.silent:
+        for color, part in zip(range(75, 89), banner.split('\n')[1:]):
+            print("\033[1;38;5;{}m{}\033[0m".format(color, part))
+            sleep(0.1337)
 
-    checkers = [gmail, yandex, proton, mailRu,
+    all_checkers = [gmail, yandex, proton, mailRu,
                 rambler, tuta, yahoo, outlook,
                 zoho, eclipso, posteo, mailbox,
                 firemail, fastmail, startmail,
                 bigmir, tutby, xmail, ukrnet,
                 runbox]  # -kolab -lycos(false((( )
+
+    if args.providers:
+        pset = set(args.providers)
+        checkers = [c for c in all_checkers if c.__name__ in pset]
+        if not checkers:
+            print(f'Can not find providers {", ".join(args.providers)}')
+    else:
+        checkers = all_checkers
 
     # checkers = [outlook] # USE IF FOR SINGLE CHECK
 
