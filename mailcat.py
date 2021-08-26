@@ -26,11 +26,17 @@ def sleeper(sList, s_min, s_max):
             print("less", sList.index(ind))
             sleep(random.uniform(s_min, s_max))
 
+
 def via_tor():
     session = requests.Session()
     session.proxies = {'http':  'socks5://127.0.0.1:9050',
                        'https': 'socks5://127.0.0.1:9050'}
     return session
+
+
+def simple_session():
+    return requests.Session()
+
 
 def code250(mailProvider, target):
     target = target
@@ -63,7 +69,7 @@ def code250(mailProvider, target):
     return []
 
 
-def gmail(target) -> Dict:
+def gmail(target, req_session_fun) -> Dict:
     result = {}
     gmailChkLst = code250("gmail.com", target)
     if gmailChkLst:
@@ -71,7 +77,7 @@ def gmail(target) -> Dict:
     return result
 
 
-def yandex(target) -> Dict:
+def yandex(target, req_session_fun) -> Dict:
     result = {}
     yaAliasesLst = ["yandex.by",
                     "yandex.kz",
@@ -86,7 +92,7 @@ def yandex(target) -> Dict:
     return result
 
 
-def proton(target) -> Dict:
+def proton(target, req_session_fun) -> Dict:
     result = {}
     '''
     protonMails = []
@@ -111,7 +117,7 @@ def proton(target) -> Dict:
 
     protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
     protonSucc = []
-    sreq = via_tor()
+    sreq = req_session_fun()
 
     for proton_domain in protonLst:
         proton_mail = "{}@{}".format(target, proton_domain)
@@ -127,13 +133,13 @@ def proton(target) -> Dict:
     return result
 
 
-def mailRu(target) -> Dict:
+def mailRu(target, req_session_fun) -> Dict:
     result = {}
 
     # headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0', 'Referer': 'https://account.mail.ru/signup?from=main&rf=auth.mail.ru'}
     mailRU = ["mail.ru", "bk.ru", "inbox.ru", "list.ru", "internet.ru"]
     mailRuSucc = []
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for maildomain in mailRU:
         try:
@@ -160,12 +166,12 @@ def mailRu(target) -> Dict:
     return result
 
 
-def rambler(target) -> Dict:  # basn risk
+def rambler(target, req_session_fun) -> Dict:  # basn risk
     result = {}
 
     ramblerMail = ["rambler.ru", "lenta.ru", "autorambler.ru", "myrambler.ru", "ro.ru", "rambler.ua"]
     ramblerSucc = []
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for maildomain in ramblerMail:
 
@@ -215,7 +221,7 @@ def rambler(target) -> Dict:  # basn risk
     return result
 
 
-def tuta(target) -> Dict:
+def tuta(target, req_session_fun) -> Dict:
     result = {}
 
     headers = {
@@ -223,7 +229,7 @@ def tuta(target) -> Dict:
 
     tutaMail = ["tutanota.com", "tutanota.de", "tutamail.com", "tuta.io", "keemail.me"]
     tutaSucc = []
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for maildomain in tutaMail:
 
@@ -254,7 +260,7 @@ def tuta(target) -> Dict:
     return result
 
 
-def yahoo(target) -> Dict:
+def yahoo(target, req_session_fun) -> Dict:
     result = {}
 
     yahooURL = "https://login.yahoo.com:443/account/module/create?validateField=yid"
@@ -268,7 +274,7 @@ def yahoo(target) -> Dict:
 
     # yahooPOST = {"specId": "yidReg", "crumb": randstr(11), "acrumb": randstr(8), "yid": target} # crumb: 11, acrumb: 8
     yahooPOST = {"specId": "yidReg", "crumb": "bshN8x9qmfJ", "acrumb": "wy5fFM96", "yid": target}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     try:
         yahooChk = sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=5)
@@ -282,7 +288,7 @@ def yahoo(target) -> Dict:
     return result
 
 
-def outlook(target):
+def outlook(target, req_session_fun):
     result = {}
     liveSucc = []
     _sreq = HTMLSession()
@@ -307,7 +313,7 @@ def outlook(target):
     return result
 
 
-def zoho(target):
+def zoho(target, req_session_fun):
     result = {}
 
     headers = {
@@ -318,7 +324,7 @@ def zoho(target):
 
     zohoURL = "https://accounts.zoho.com:443/accounts/validate/register.ac"
     zohoPOST = {"username": target, "servicename": "VirtualOffice", "serviceurl": "/"}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     try:
         zohoChk = sreq.post(zohoURL, headers=headers, data=zohoPOST, timeout=10)
@@ -334,7 +340,7 @@ def zoho(target):
     return result
 
 
-def lycos(target):
+def lycos(target, req_session_fun):
     result = {}
 
     lycosURL = "https://registration.lycos.com/usernameassistant.php?validate=1&m_AID=0&t=1625674151843&m_U={}&m_PR=27&m_SESSIONKEY=4kCL5VaODOZ5M5lBF2lgVONl7tveoX8RKmedGRU3XjV3xRX5MqCP2NWHKynX4YL4".format(
@@ -344,7 +350,7 @@ def lycos(target):
         "User-Agent": "User-Agent: Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36",
         "Referer": "https://registration.lycos.com/register.php?m_PR=27&m_E=7za1N6E_h_nNSmIgtfuaBdmGpbS66MYX7lMDD-k9qlZCyq53gFjU_N12yVxL01F0R_mmNdhfpwSN6Kq6bNfiqQAA",
         "X-Requested-With": "XMLHttpRequest"}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     try:
         # lycosChk = requests.get(lycosURL, headers=headers)
@@ -359,7 +365,7 @@ def lycos(target):
     return result
 
 
-def eclipso(target):  # high ban risk + false positives after
+def eclipso(target, req_session_fun):  # high ban risk + false positives after
     result = {}
 
     eclipsoSucc = []
@@ -378,7 +384,7 @@ def eclipso(target):  # high ban risk + false positives after
     headers = {'User-Agent': random.choice(uaLst),
                'Referer': 'https://www.eclipso.eu/signup/tariff-5',
                'X-Requested-With': 'XMLHttpRequest'}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for maildomain in eclipsoLst:
         try:
@@ -402,7 +408,7 @@ def eclipso(target):  # high ban risk + false positives after
     return result
 
 
-def posteo(target) -> Dict:
+def posteo(target, req_session_fun) -> Dict:
     result = {}
 
     posteoLst = [
@@ -463,7 +469,7 @@ def posteo(target) -> Dict:
         'Referer': 'https://posteo.de/en/signup',
         'X-Requested-With': 'XMLHttpRequest'}
 
-    sreq = requests.Session()
+    sreq = req_session_fun()
     try:
 
         eclipsoURL = "https://posteo.de/users/new/check_username?user%5Busername%5D={}".format(target)
@@ -480,7 +486,7 @@ def posteo(target) -> Dict:
     return result
 
 
-def mailbox(target) -> Dict:  # tor RU
+def mailbox(target, req_session_fun) -> Dict:  # tor RU
     result = {}
 
     mailboxURL = "https://register.mailbox.org:443/ajax"
@@ -489,7 +495,7 @@ def mailbox(target) -> Dict:  # tor RU
     mailboxJSON = {"account_name": target, "action": "validateAccountName"}
 
     existiert = "Der Accountname existiert bereits."
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     try:
 
@@ -504,7 +510,7 @@ def mailbox(target) -> Dict:  # tor RU
         pass
 
 
-def firemail(target) -> Dict:  # tor RU
+def firemail(target, req_session_fun) -> Dict:  # tor RU
     result = {}
 
     firemailSucc = []
@@ -514,7 +520,7 @@ def firemail(target) -> Dict:  # tor RU
     headers = {'User-Agent': random.choice(uaLst),
                'Referer': 'https://firemail.de/E-Mail-Adresse-anmelden',
                'X-Requested-With': 'XMLHttpRequest'}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for firemailDomain in firemailDomains:
         try:
@@ -535,7 +541,7 @@ def firemail(target) -> Dict:  # tor RU
         result["Firemail"] = firemailSucc
 
 
-def fastmail(target) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
+def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
     result = {}
 
     fastmailSucc = []
@@ -579,7 +585,7 @@ def fastmail(target) -> Dict:  # sanctions against Russia) TOR + 4 min for check
                "Origin": "https://www.fastmail.com"}
 
     fastmailURL = "https://www.fastmail.com:443/jmap/setup/"
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for fmdomain in fastmailLst:
         # print(fastmailLst.index(fmdomain)+1, fmdomain)
@@ -613,13 +619,13 @@ def fastmail(target) -> Dict:  # sanctions against Russia) TOR + 4 min for check
         result["Fastmail"] = fastmailSucc
 
 
-def startmail(target) -> Dict:  # TOR
+def startmail(target, req_session_fun) -> Dict:  # TOR
     result = {}
 
     startmailURL = "https://mail.startmail.com:443/api/AvailableAddresses/{}%40startmail.com".format(target)
     headers = {"User-Agent": random.choice(uaLst),
                "X-Requested-With": "1.94.0"}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     try:
         chkStartmail = sreq.get(startmailURL, headers=headers, timeout=10)
@@ -631,7 +637,7 @@ def startmail(target) -> Dict:  # TOR
         pass
 
 
-def kolab(target) -> Dict:
+def kolab(target, req_session_fun) -> Dict:
     result = {}
 
     kolabSucc = []
@@ -711,7 +717,7 @@ def kolab(target) -> Dict:
                "Content-Type": "application/json;charset=utf-8",
                "X-Test-Payment-Provider": "mollie",
                "X-Requested-With": "XMLHttpRequest"}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     kolabStatus = sreq.post(kolabURL, headers={"User-Agent": random.choice(uaLst)}, timeout=10)
 
@@ -750,12 +756,12 @@ def kolab(target) -> Dict:
                 pass
 
 
-def bigmir(target) -> Dict:
+def bigmir(target, req_session_fun) -> Dict:
     result = {}
 
     bigmirSucc = []
     bigmirMail = ["i.ua", "ua.fm", "email.ua"]
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     for maildomain in bigmirMail:
         try:
@@ -788,9 +794,9 @@ def bigmir(target) -> Dict:
         result["Bigmir"] = bigmirSucc
 
 
-def tutby(target) -> Dict:  # Down
+def tutby(target, req_session_fun) -> Dict:  # Down
     result = {}
-    sreq = requests.Session()
+    sreq = req_session_fun()
 
     try:
 
@@ -822,10 +828,10 @@ def tutby(target) -> Dict:  # Down
     return result
 
 
-def xmail(target) -> Dict:
+def xmail(target, req_session_fun) -> Dict:
     result = {}
 
-    sreq = requests.Session()
+    sreq = req_session_fun()
     xmailURL = "https://xmail.net:443/app/signup/checkusername"
     headers = {"User-Agent": random.choice(uaLst),
                "Accept": "application/json, text/javascript, */*",
@@ -849,7 +855,7 @@ def xmail(target) -> Dict:
     return result
 
 
-def ukrnet(target) -> Dict:
+def ukrnet(target, req_session_fun) -> Dict:
     result = {}
 
     ukrnet_reg_urk = "https://accounts.ukr.net:443/registration"
@@ -862,7 +868,7 @@ def ukrnet(target) -> Dict:
         "Connection": "close",
         "Upgrade-Insecure-Requests": "1"}
 
-    sreq = requests.Session()
+    sreq = req_session_fun()
     try:
 
         get_reg_ukrnet = sreq.get(ukrnet_reg_urk, headers=headers, timeout=10)
@@ -883,7 +889,7 @@ def ukrnet(target) -> Dict:
         pass
 
 
-def runbox(target) -> Dict:
+def runbox(target, req_session_fun) -> Dict:
     result = {}
 
     runboxSucc = []
@@ -922,7 +928,7 @@ def runbox(target) -> Dict:
                "Origin": "https://runbox.com",
                "Referer": "https://runbox.com/signup?runbox7=1"}
 
-    sreq = requests.Session()
+    sreq = req_session_fun()
     for rboxdomain in runboxLst:
 
         data = {"type": "person", "company": "", "first_name": "", "last_name": "", "user": target,
@@ -949,10 +955,10 @@ def runbox(target) -> Dict:
 
 ####################################################################################
 
-def print_results(checker, target):
+def print_results(checker, target, req_session_fun):
     checker_name = checker.__name__
     print(f'Running {checker_name} checker for {target}...')
-    res = checker(target)
+    res = checker(target, req_session_fun)
 
     try:
         if not res:
@@ -995,6 +1001,12 @@ if __name__ == '__main__':
         action="store_true",
         default=False,
         help="Hide wonderful mailcat intro animation",
+    )
+    parser.add_argument(
+        '--tor',
+        action="store_true",
+        default=False,
+        help="Use Tor where you need it",
     )
     args = parser.parse_args()
 
@@ -1048,11 +1060,14 @@ if __name__ == '__main__':
     else:
         checkers = all_checkers
 
-    # checkers = [outlook] # USE IF FOR SINGLE CHECK
+    if args.tor:
+        req_session_fun = via_tor
+    else:
+        req_session_fun = simple_session
 
     threads = []
     for checker in checkers:
-        t = threading.Thread(target=print_results, args=(checker, target,))
+        t = threading.Thread(target=print_results, args=(checker, target, req_session_fun))
         t.start()
         threads.append(t)
 
