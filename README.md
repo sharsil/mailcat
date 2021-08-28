@@ -26,6 +26,7 @@ Total 22 providers, > 60 domains and > 100 aliases.
 | Gmail               | gmail.com                              | SMTP              |
 | Yandex              | yandex.ru + 5 aliases                  | SMTP              |
 | Protonmail          | protonmail.com + 2 aliases             | API               |
+| iCloud              | icloud.com, me.com, mac.com            | Access recovery   |
 | tut.by              | tut.by                                 | SMTP/Registration |
 | MailRu              | mail.ru + 4 other domains              | Registration      |
 | Rambler             | rambler.ru + 5 other domains           | Registration      |

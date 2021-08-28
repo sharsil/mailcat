@@ -796,11 +796,16 @@ def bigmir(target, req_session_fun) -> Dict:
 
 def tutby(target, req_session_fun) -> Dict:  # Down
     result = {}
+
+    smtp_check = code250('tut.by', target)
+    if smtp_check:
+        result['Tut.by'] = smtp_check[0]
+        return result
+
     sreq = req_session_fun()
 
     try:
-
-        target64 = base64.b64encode(target)
+        target64 = base64.b64encode(target.encode())
         tutbyChkURL = "https://profile.tut.by/requests/index.php"
 
         headers = {
@@ -819,6 +824,7 @@ def tutby(target, req_session_fun) -> Dict:  # Down
             exist = '[{"success":true}]'
 
             if exist == tutbyChk.text:
+                result['Tut.by'] = '{}@tut.by'.format(target)
                 # print("[+] Success with {}@tut.by".format(target))
                 pass
 
@@ -953,6 +959,35 @@ def runbox(target, req_session_fun) -> Dict:
     return result
 
 
+def iCloud(target, req_session_fun) -> Dict:
+    result = {}
+
+    domains = [
+        'icloud.com',
+        'me.com',
+        'mac.com',
+    ]
+
+    for domain in domains:
+        email = f'{target}@{domain}'
+        sreq = req_session_fun()
+        headers = {
+            'User-Agent': random.choice(uaLst),
+            'sstt': 'zYEaY3WeI76oAG%2BCNPhCiGcKUCU0SIQ1cIO2EMepSo8egjarh4MvVPqxGOO20TYqlbJI%2Fqs57WwAoJarOPukJGJvgOF7I7C%2B1jAE5vZo%2FSmYkvi2e%2Bfxj1od1xJOf3lnUXZlrnL0QWpLfaOgOwjvorSMJ1iuUphB8bDqjRzyb76jzDU4hrm6TzkvxJdlPCCY3JVTfAZFgXRoW9VlD%2Bv3VF3in1RSf6Er2sOS12%2FZJR%2Buo9ubA2KH9RLRzPlr1ABtsRgw6r4zbFbORaKTSVWGDQPdYCaMsM4ebevyKj3aIxXa%2FOpS6SHcx1KrvtOAUVhR9nsfZsaYfZvDa6gzpcNBF9domZJ1p8MmThEfJra6LEuc9ssZ3aWn9uKqvT3pZIVIbgdZARL%2B6SK1YCN7',
+            'Content-Type': 'application/json',
+        }
+
+        data = {'id': email}
+        check = sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=5)
+        if check.headers and check.headers.get('Location').startswith('/password/authenticationmethod'):
+            if not result:
+                result = {'iCloud': []}
+            result['iCloud'].append(email)
+
+    return result
+
+
+
 ####################################################################################
 
 def show_banner():
@@ -1044,7 +1079,7 @@ if __name__ == '__main__':
                 zoho, eclipso, posteo, mailbox,
                 firemail, fastmail, startmail,
                 bigmir, tutby, xmail, ukrnet,
-                runbox]  # -kolab -lycos(false((( )
+                runbox, iCloud]  # -kolab -lycos(false((( )
 
     if not args.silent:
         show_banner()
