@@ -12,8 +12,9 @@ The only cat who can find existing email addresses by nickname.
 
 	./mailcat.py username
 
-It's recommended to run script through Tor and proxies, for example, with proxychains:
+It's recommended to run script through Tor and proxies. You can use internal Tor routing (`--tor`) or proxychains:
 
+	./mailcat.py --tor username
 	proxychains4 -q python3 mailcat.py username
 
 ## Supported providers
@@ -24,12 +25,12 @@ Total 22 providers, > 60 domains and > 100 aliases.
 | ------------------- | -------------------------------------- | ----------------- |
 | Gmail               | gmail.com                              | SMTP              |
 | Yandex              | yandex.ru + 5 aliases                  | SMTP              |
-| Protonmail          | protonmail.com + 2 aliases             | HTTP API          |
-| MailRu              | mail.ru + 4 other domains              | HTTP API          |
-| Rambler             | rambler.ru + 5 other domains           | HTTP API          |
-| Tutanota            | tutanota.com + 4 other domains         | HTTP API          |
-| Yahoo               | yahoo.com                              | HTTP API          |
-| Outlook             | outlook.com, hotmail.com               | HTTP API          |
+| Protonmail          | protonmail.com + 2 aliases             | API               |
+| MailRu              | mail.ru + 4 other domains              | Registration      |
+| Rambler             | rambler.ru + 5 other domains           | Registration      |
+| Tutanota            | tutanota.com + 4 other domains         | Registration      |
+| Yahoo               | yahoo.com                              | Registration      |
+| Outlook             | outlook.com, hotmail.com               | Registration      |
 | Zoho                | zohomail.com                           | HTTP API          |
 | Lycos               | lycos.com                              | HTTP API          |
 | Eclipso             | eclipso.eu + 9 other domains           | HTTP API          |
