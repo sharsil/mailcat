@@ -979,7 +979,7 @@ def iCloud(target, req_session_fun) -> Dict:
 
         data = {'id': email}
         check = sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=5)
-        if check.headers and check.headers.get('Location').startswith('/password/authenticationmethod'):
+        if check.headers and check.headers.get('Location', '').startswith('/password/authenticationmethod'):
             if not result:
                 result = {'iCloud': []}
             result['iCloud'].append(email)
@@ -1011,14 +1011,16 @@ def show_banner():
         sleep(0.1337)
 
 
-def print_results(checker, target, req_session_fun):
+def print_results(checker, target, req_session_fun, is_verbose_mode):
     checker_name = checker.__name__
-    print(f'Running {checker_name} checker for {target}...')
+    if is_verbose_mode:
+        print(f'Running {checker_name} checker for {target}...')
     res = checker(target, req_session_fun)
 
     try:
         if not res:
-            print(f'No results for {checker_name}')
+            if is_verbose_mode:
+                print(f'No results for {checker_name}')
             res = {}
     except Exception as e:
         print(f'Error while checking {checker_name}: {e}')
@@ -1065,6 +1067,13 @@ if __name__ == '__main__':
         action="store_true",
         default=False,
         help="Hide wonderful mailcat intro animation",
+    )
+    parser.add_argument(
+        '-v',
+        '--verbose',
+        action="store_true",
+        default=False,
+        help="Verbose output about search progress.",
     )
     parser.add_argument(
         '--tor',
@@ -1124,7 +1133,7 @@ if __name__ == '__main__':
 
     threads = []
     for checker in checkers:
-        t = threading.Thread(target=print_results, args=(checker, target, req_session_fun))
+        t = threading.Thread(target=print_results, args=(checker, target, req_session_fun, args.verbose))
         t.start()
         threads.append(t)
 
