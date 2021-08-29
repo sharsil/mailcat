@@ -10,6 +10,12 @@ The only cat who can find existing email addresses by nickname.
 
 ## Usage
 
+First install requirements:
+	
+	pip3 install -r requirements.txt
+
+Then just run the script:
+
 	./mailcat.py username
 
 It's recommended to run script through Tor and proxies. You can use internal Tor routing (`--tor`) or proxychains:
