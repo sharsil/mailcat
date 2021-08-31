@@ -986,7 +986,38 @@ def iCloud(target, req_session_fun) -> Dict:
 
     return result
 
+def duckgo(target, req_session_fun) -> Dict:
 
+    result = {}
+
+    duckGoSucc = []
+
+    duckURL = "https://quack.duckduckgo.com/api/auth/signup"
+
+    headers = { "User-Agent": random.choice(uaLst), "Origin": "https://duckduckgo.com", "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-site", "Te": "trailers", "Referer": "https://duckduckgo.com/"}
+
+    data = {
+        "code": (None, "01337"),
+        "user": (None, target),
+        "email": (None, "mail@example.com")
+
+    }
+
+    sreq = req_session_fun()
+
+    try:
+
+        checkDuck = sreq.post(duckURL, headers=headers, data=data, timeout=5)
+
+        #if checkDuck.json()['error'] == "unavailable_username":
+        if "unavailable_username" in checkDuck.text:
+            result["DuckGo"] = "{}@duck.go".format(target)
+
+    except Exception as e:
+        pass
+
+    return result
 
 ####################################################################################
 
@@ -1088,7 +1119,7 @@ if __name__ == '__main__':
                 zoho, eclipso, posteo, mailbox,
                 firemail, fastmail, startmail,
                 bigmir, tutby, xmail, ukrnet,
-                runbox, iCloud]  # -kolab -lycos(false((( )
+                runbox, iCloud, duckgo]  # -kolab -lycos(false((( )
 
     if not args.silent:
         show_banner()
