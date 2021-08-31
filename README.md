@@ -25,7 +25,7 @@ It's recommended to run script through Tor and proxies. You can use internal Tor
 
 ## Supported providers
 
-Total 22 providers, > 60 domains and > 100 aliases.
+Total 24 providers, > 60 domains and > 100 aliases.
 
 | Name                | Domains                                | Method            |
 | ------------------- | -------------------------------------- | ----------------- |
@@ -52,3 +52,4 @@ Total 22 providers, > 60 domains and > 100 aliases.
 | Xmail               | xmail.net                              | Registration      |
 | Ukrnet              | ukr.net                                | Registration      |
 | Runbox              | runbox.com + 30 other domains          | Registration      |
+| DuckGo              | duck.com                               | Registration      | 
