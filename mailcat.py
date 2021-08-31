@@ -1012,7 +1012,7 @@ def duckgo(target, req_session_fun) -> Dict:
 
         #if checkDuck.json()['error'] == "unavailable_username":
         if "unavailable_username" in checkDuck.text:
-            result["DuckGo"] = "{}@duck.go".format(target)
+            result["DuckGo"] = "{}@duck.com".format(target)
 
     except Exception as e:
         pass
