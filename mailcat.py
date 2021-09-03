@@ -1019,6 +1019,90 @@ def duckgo(target, req_session_fun) -> Dict:
 
     return result
 
+def ctemplar(target, req_session_fun) -> Dict:
+
+    result = {}
+    sreq = req_session_fun()
+
+    ctURL = "https://api.ctemplar.com/auth/check-username/"
+    ctJSON = {"username": target}
+
+    headers = { "User-Agent": random.choice(uaLst),
+                "Accept": "application/json, text/plain, */*",
+                "Referer": "https://mail.ctemplar.com/",
+                "Content-Type": "application/json",
+                "Origin": "https://mail.ctemplar.com" }
+
+    try:
+        chkCT = sreq.post(ctURL, headers=headers, json=ctJSON)
+
+        if chkCT.status_code == 200:
+            ct_exists = chkCT.json()['exists']
+            if ct_exists:
+                result["CTemplar"] = "{}@ctemplar.com".format(target)
+
+    except Exception as e:
+        pass
+
+    return result
+
+def hushmail(target, req_session_fun) -> Dict:
+
+    result = {}
+
+    hushDomains = ["hushmail.com", "hush.com", "therapyemail.com", "counselingmail.com", "therapysecure.com", "counselingsecure.com"]
+    hushSucc = []
+    sreq = req_session_fun()
+
+    hush_ts = int(datetime.datetime.now().timestamp())
+
+    hushURL = "https://secure.hushmail.com/signup/create?format=json"
+    ref_header = "https://secure.hushmail.com/signup/?package=hushmail-for-healthcare-individual-5-form-monthly&source=website&tag=page_business_healthcare,btn_healthcare_popup_signup_individual&coupon_code="
+    hush_UA = random.choice(uaLst)
+
+    hushpass = randstr(15)
+
+    for hushdomain in hushDomains:
+
+        #hushpass = randstr(15)
+        hush_ts = int(datetime.datetime.now().timestamp())
+
+        headers = { "User-Agent": hush_UA,
+                    "Accept": "application/json, text/javascript, */*; q=0.01",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Hush-Ajax-Start-Time": str(hush_ts), "X-Requested-With": "XMLHttpRequest",
+                    "Origin": "https://secure.hushmail.com", "Referer": ref_header,
+                    "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin" }
+
+        data = {"hush_customerid": '', "hush_exitmethod": "GET",
+                "skin": "bootstrap311", "hush_cc_country": '',
+                "trial_mode": '', "parent": '', "parent_code": '',
+                "coupon_code": '', "form_token": "6e1555a603f6e762a090e6f6b885122f_dabaddeadbee",
+                "__hushform_extra_fields": '', "hush_username": target, "hush_domain": hushdomain,
+                "hush_pass1": hushpass, "hush_pass2": hushpass,
+                "hush_exitpage": "https://secure.hushmail.com/pay?package=hushmail-for-healthcare-individual-5-form-monthly",
+                "package": "hushmail-for-healthcare-individual-5-form-monthly",
+                "hush_reservation_code": '', "hush_customerid": '', "hush_tos": '', "hush_privacy_policy": '',
+                "hush_additional_tos": '', "hush_email_opt_in": '', "isValidAjax": "newaccountform"}
+
+        try:
+            hushCheck = sreq.post(hushURL, headers=headers, data=data, timeout=5)
+
+            if hushCheck.status_code == 200:
+                if "'{}' is not available".format(target) in hushCheck.json()['formValidation']['hush_username']:
+                    hushMail = "{}@{}".format(target, hushdomain)
+                    hushSucc.append(hushMail)
+
+        except Exception as e:
+            pass
+
+        sleeper(hushDomains, 1.1, 2.2)
+
+    if hushSucc:
+        result["HushMail"] = hushSucc
+
+    return result
+
 ####################################################################################
 
 def show_banner():
@@ -1119,7 +1203,8 @@ if __name__ == '__main__':
                 zoho, eclipso, posteo, mailbox,
                 firemail, fastmail, startmail,
                 bigmir, tutby, xmail, ukrnet,
-                runbox, iCloud, duckgo]  # -kolab -lycos(false((( )
+                runbox, iCloud, duckgo, hushmail,
+                ctemplar]  # -kolab -lycos(false((( )
 
     if not args.silent:
         show_banner()
