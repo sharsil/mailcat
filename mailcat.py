@@ -23,7 +23,7 @@ def randstr(num):
 def sleeper(sList, s_min, s_max):
     for ind in sList:
         if sList.index(ind) < (len(sList) - 1):
-            print("less", sList.index(ind))
+            # print("less", sList.index(ind))
             sleep(random.uniform(s_min, s_max))
 
 
