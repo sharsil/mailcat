@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import datetime
 import json
 import random
 import smtplib
@@ -9,11 +10,11 @@ import string as s
 import sys
 import threading
 from time import sleep
-from typing import Dict
+from typing import Dict, List
 
 import dns.resolver
 import requests
-from requests_html import HTMLSession
+from requests_html import HTMLSession  # type: ignore
 
 
 def randstr(num):
@@ -186,9 +187,9 @@ def rambler(target, req_session_fun) -> Dict:  # basn risk
             #            "Referer": "https://id.rambler.ru/login-20/mail-registration?back=https%3A%2F%2Fmail.rambler.ru%2F&rname=mail&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru",
 
             headers = {"User-Agent": userAgent,
-                       "Referer": "https://id.rambler.ru/login-20/mail-registration?utm_source=head" \
-                                  "&utm_campaign=self_promo&utm_medium=header&utm_content=mail&rname=mail" \
-                                  "&back=https%3A%2F%2Fmail.rambler.ru%2F%3Futm_source%3Dhead%26utm_campaign%3Dself_promo%26utm_medium%3Dheader%26utm_content%3Dmail" \
+                       "Referer": "https://id.rambler.ru/login-20/mail-registration?utm_source=head"
+                                  "&utm_campaign=self_promo&utm_medium=header&utm_content=mail&rname=mail"
+                                  "&back=https%3A%2F%2Fmail.rambler.ru%2F%3Futm_source%3Dhead%26utm_campaign%3Dself_promo%26utm_medium%3Dheader%26utm_content%3Dmail"
                                   "&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru&theme=mail-web",
                        "Content-Type": "application/json",
                        "Origin": "https://id.rambler.ru",
@@ -288,7 +289,7 @@ def yahoo(target, req_session_fun) -> Dict:
     return result
 
 
-def outlook(target, req_session_fun):
+def outlook(target, req_session_fun) -> Dict:
     result = {}
     liveSucc = []
     _sreq = HTMLSession()
@@ -313,7 +314,7 @@ def outlook(target, req_session_fun):
     return result
 
 
-def zoho(target, req_session_fun):
+def zoho(target, req_session_fun) -> Dict:
     result = {}
 
     headers = {
@@ -340,7 +341,7 @@ def zoho(target, req_session_fun):
     return result
 
 
-def lycos(target, req_session_fun):
+def lycos(target, req_session_fun) -> Dict:
     result = {}
 
     lycosURL = "https://registration.lycos.com/usernameassistant.php?validate=1&m_AID=0&t=1625674151843&m_U={}&m_PR=27&m_SESSIONKEY=4kCL5VaODOZ5M5lBF2lgVONl7tveoX8RKmedGRU3XjV3xRX5MqCP2NWHKynX4YL4".format(
@@ -365,7 +366,7 @@ def lycos(target, req_session_fun):
     return result
 
 
-def eclipso(target, req_session_fun):  # high ban risk + false positives after
+def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false positives after
     result = {}
 
     eclipsoSucc = []
@@ -509,6 +510,8 @@ def mailbox(target, req_session_fun) -> Dict:  # tor RU
         # print(e)
         pass
 
+    return result
+
 
 def firemail(target, req_session_fun) -> Dict:  # tor RU
     result = {}
@@ -539,6 +542,8 @@ def firemail(target, req_session_fun) -> Dict:  # tor RU
 
     if firemailSucc:
         result["Firemail"] = firemailSucc
+
+    return result
 
 
 def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
@@ -618,6 +623,8 @@ def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR 
     if fastmailSucc:
         result["Fastmail"] = fastmailSucc
 
+    return result
+
 
 def startmail(target, req_session_fun) -> Dict:  # TOR
     result = {}
@@ -633,14 +640,14 @@ def startmail(target, req_session_fun) -> Dict:  # TOR
         if chkStartmail.status_code == 404:
             result["StartMail"] = "{}@startmail.com".format(target)
 
-    except:
+    except Exception as e:
         pass
+
+    return result
 
 
 def kolab(target, req_session_fun) -> Dict:
-    result = {}
-
-    kolabSucc = []
+    result: Dict[str, List] = {}
 
     kolabLst = ["mykolab.com",
                 "attorneymail.ch",
@@ -751,9 +758,10 @@ def kolab(target, req_session_fun) -> Dict:
                         if kolabJSON["errors"]:
                             print(kolabJSON["errors"])
 
-
             except Exception as e:
                 pass
+
+    return result
 
 
 def bigmir(target, req_session_fun) -> Dict:
@@ -793,6 +801,8 @@ def bigmir(target, req_session_fun) -> Dict:
     if bigmirSucc:
         result["Bigmir"] = bigmirSucc
 
+    return result
+
 
 def tutby(target, req_session_fun) -> Dict:  # Down
     result = {}
@@ -805,7 +815,7 @@ def tutby(target, req_session_fun) -> Dict:  # Down
     sreq = req_session_fun()
 
     try:
-        target64 = base64.b64encode(target.encode())
+        target64 = str(base64.b64encode(target.encode()))
         tutbyChkURL = "https://profile.tut.by/requests/index.php"
 
         headers = {
@@ -817,7 +827,7 @@ def tutby(target, req_session_fun) -> Dict:  # Down
             'X-Requested-With': 'XMLHttpRequest'
         }
 
-        tutbyData = "action=lgval&l={}".format(target64)
+        tutbyData = f"action=lgval&l={target64}"
         tutbyChk = sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=10)
 
         if tutbyChk.status_code == 200:
@@ -894,6 +904,8 @@ def ukrnet(target, req_session_fun) -> Dict:
     except Exception as e:
         pass
 
+    return result
+
 
 def runbox(target, req_session_fun) -> Dict:
     result = {}
@@ -960,7 +972,7 @@ def runbox(target, req_session_fun) -> Dict:
 
 
 def iCloud(target, req_session_fun) -> Dict:
-    result = {}
+    result: Dict[str, List] = {}
 
     domains = [
         'icloud.com',
@@ -986,16 +998,14 @@ def iCloud(target, req_session_fun) -> Dict:
 
     return result
 
+
 def duckgo(target, req_session_fun) -> Dict:
-
     result = {}
-
-    duckGoSucc = []
 
     duckURL = "https://quack.duckduckgo.com/api/auth/signup"
 
-    headers = { "User-Agent": random.choice(uaLst), "Origin": "https://duckduckgo.com", "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-site", "Te": "trailers", "Referer": "https://duckduckgo.com/"}
+    headers = {"User-Agent": random.choice(uaLst), "Origin": "https://duckduckgo.com", "Sec-Fetch-Dest": "empty",
+               "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-site", "Te": "trailers", "Referer": "https://duckduckgo.com/"}
 
     data = {
         "code": (None, "01337"),
@@ -1007,10 +1017,9 @@ def duckgo(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-
         checkDuck = sreq.post(duckURL, headers=headers, data=data, timeout=5)
 
-        #if checkDuck.json()['error'] == "unavailable_username":
+        # if checkDuck.json()['error'] == "unavailable_username":
         if "unavailable_username" in checkDuck.text:
             result["DuckGo"] = "{}@duck.com".format(target)
 
@@ -1018,6 +1027,7 @@ def duckgo(target, req_session_fun) -> Dict:
         pass
 
     return result
+
 
 def ctemplar(target, req_session_fun) -> Dict:
 
@@ -1027,11 +1037,11 @@ def ctemplar(target, req_session_fun) -> Dict:
     ctURL = "https://api.ctemplar.com/auth/check-username/"
     ctJSON = {"username": target}
 
-    headers = { "User-Agent": random.choice(uaLst),
-                "Accept": "application/json, text/plain, */*",
-                "Referer": "https://mail.ctemplar.com/",
-                "Content-Type": "application/json",
-                "Origin": "https://mail.ctemplar.com" }
+    headers = {"User-Agent": random.choice(uaLst),
+               "Accept": "application/json, text/plain, */*",
+               "Referer": "https://mail.ctemplar.com/",
+               "Content-Type": "application/json",
+               "Origin": "https://mail.ctemplar.com"}
 
     try:
         chkCT = sreq.post(ctURL, headers=headers, json=ctJSON)
@@ -1045,6 +1055,7 @@ def ctemplar(target, req_session_fun) -> Dict:
         pass
 
     return result
+
 
 def hushmail(target, req_session_fun) -> Dict:
 
@@ -1064,15 +1075,15 @@ def hushmail(target, req_session_fun) -> Dict:
 
     for hushdomain in hushDomains:
 
-        #hushpass = randstr(15)
+        # hushpass = randstr(15)
         hush_ts = int(datetime.datetime.now().timestamp())
 
-        headers = { "User-Agent": hush_UA,
-                    "Accept": "application/json, text/javascript, */*; q=0.01",
-                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                    "X-Hush-Ajax-Start-Time": str(hush_ts), "X-Requested-With": "XMLHttpRequest",
-                    "Origin": "https://secure.hushmail.com", "Referer": ref_header,
-                    "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin" }
+        headers = {"User-Agent": hush_UA,
+                   "Accept": "application/json, text/javascript, */*; q=0.01",
+                   "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                   "X-Hush-Ajax-Start-Time": str(hush_ts), "X-Requested-With": "XMLHttpRequest",
+                   "Origin": "https://secure.hushmail.com", "Referer": ref_header,
+                   "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"}
 
         data = {"hush_customerid": '', "hush_exitmethod": "GET",
                 "skin": "bootstrap311", "hush_cc_country": '',
@@ -1104,6 +1115,7 @@ def hushmail(target, req_session_fun) -> Dict:
     return result
 
 ####################################################################################
+
 
 def show_banner():
     banner = r"""
@@ -1152,7 +1164,7 @@ def print_results(checker, target, req_session_fun, is_verbose_mode):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=f"Mailcat",
+        description="Mailcat",
     )
     parser.add_argument(
         '-p',
@@ -1199,12 +1211,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     all_checkers = [gmail, yandex, proton, mailRu,
-                rambler, tuta, yahoo, outlook,
-                zoho, eclipso, posteo, mailbox,
-                firemail, fastmail, startmail,
-                bigmir, tutby, xmail, ukrnet,
-                runbox, iCloud, duckgo, hushmail,
-                ctemplar]  # -kolab -lycos(false((( )
+                    rambler, tuta, yahoo, outlook,
+                    zoho, eclipso, posteo, mailbox,
+                    firemail, fastmail, startmail,
+                    bigmir, tutby, xmail, ukrnet,
+                    runbox, iCloud, duckgo, hushmail,
+                    ctemplar]  # -kolab -lycos(false((( )
 
     if not args.silent:
         show_banner()
