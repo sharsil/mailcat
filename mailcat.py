@@ -111,7 +111,7 @@ def proton(target, req_session_fun) -> Dict:
         sleep(random.uniform(2, 4))
 
     if protonMails:
-        print('\n'.join(["[+] Success with {}".format(protonMail) for protonMail in protonMails]))'''
+        print('\n'.join(["[+] Success with {}".format(protonMail) for protonMail in protonMails]))
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36'}
@@ -126,13 +126,43 @@ def proton(target, req_session_fun) -> Dict:
         check_prot_mail = sreq.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail),
                                    headers=headers, timeout=5)
         if check_prot_mail.text != "No key found":
-            protonSucc.append(proton_mail)
+            protonSucc.append(proton_mail)'''
+    
+    protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
+    protonSucc = []
+    sreq = req_session_fun()
 
+    protonURL = "https://mail.protonmail.com/api/users/available?Name={}".format(target)
+
+    headers = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
+                "Accept": "application/vnd.protonmail.v1+json",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate",
+                "Referer": "https://mail.protonmail.com/create/new?language=en",
+                "x-pm-appversion": "Web_3.16.19",
+                "x-pm-apiversion": "3",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+                "DNT": "1", "Connection": "close"}
+
+    try:
+
+        chkProton = sreq.get(protonURL, headers=headers, timeout=3)
+
+        if chkProton.status_code == 409:
+            chkProton = chkProton.json()
+            exists = chkProton['Error']
+            if exists == "Username already used":
+                protonSucc = ["{}@{}".format(target, protodomain) for protodomain in protonLst]
+
+    except Exception as e:
+        #print(e)
+        pass    
+    
     if protonSucc:
         result["Proton"] = protonSucc
 
     return result
-
 
 def mailRu(target, req_session_fun) -> Dict:
     result = {}
