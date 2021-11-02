@@ -9,6 +9,7 @@ import smtplib
 import string as s
 import sys
 import threading
+import re
 from time import sleep
 from typing import Dict, List
 
@@ -578,6 +579,12 @@ def firemail(target, req_session_fun) -> Dict:  # tor RU
 
 def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
     result = {}
+
+    # validate target syntax according to rules from website to prevent false positive results
+    match = re.search('^\w+$', target)
+
+    if not match:
+        return result
 
     fastmailSucc = []
 
