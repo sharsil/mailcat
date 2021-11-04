@@ -580,8 +580,12 @@ def firemail(target, req_session_fun) -> Dict:  # tor RU
 def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
     result = {}
 
-    # validate target syntax according to rules from website to prevent false positive results
-    match = re.search('^\w+$', target)
+    # Registration form on fastmail website automatically lowercase all input.
+    # If uppercase letters are used false positive results are returned.
+    target = target.lower()
+
+    # validate target syntax to prevent false positive results
+    match = re.search('^\w{3,40}$', target)
 
     if not match:
         return result
