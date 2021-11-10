@@ -55,3 +55,13 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | DuckGo              | duck.com                               | Registration      | 
 | HushMail            | hushmail.com + 5 other domains         | Registration      |
 | CTemplar            | ctemplar.com                           | Registration      |
+
+## Mentions and articles
+
+[OSINTEditor Sunday Briefing: Sensational Headlines and Kuomintang Chairmanship Elections](https://www.osinteditor.com/general/osinteditor-sunday-briefing-sensational-headlines-and-kuomintang-chairmanship-elections/)
+
+[Michael Buzzel: 237 - The Huge OSINT Show by The Privacy, Security, & OSINT Show](https://soundcloud.com/user-98066669/237-the-huge-osint-show)
+
+[bellingcat: First Steps to Getting Started in Open Source Research](https://www.bellingcat.com/resources/2021/11/09/first-steps-to-getting-started-in-open-source-research/)
+
+[hwosint - Twitter post](https://twitter.com/harrywald80/status/1439115143485534212)
