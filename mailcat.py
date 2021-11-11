@@ -18,6 +18,18 @@ import requests
 from requests_html import HTMLSession  # type: ignore
 
 
+uaLst = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
+]
+
+
 def randstr(num):
     return ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), num))
 
@@ -1202,6 +1214,15 @@ def print_results(checker, target, req_session_fun, is_verbose_mode):
             print(f'*  {email}')
 
 
+CHECKERS = [gmail, yandex, proton, mailRu,
+            rambler, tuta, yahoo, outlook,
+            zoho, eclipso, posteo, mailbox,
+            firemail, fastmail, startmail,
+            bigmir, tutby, xmail, ukrnet,
+            runbox, iCloud, duckgo, hushmail,
+            ctemplar]  # -kolab -lycos(false((( )
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1251,20 +1272,12 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    all_checkers = [gmail, yandex, proton, mailRu,
-                    rambler, tuta, yahoo, outlook,
-                    zoho, eclipso, posteo, mailbox,
-                    firemail, fastmail, startmail,
-                    bigmir, tutby, xmail, ukrnet,
-                    runbox, iCloud, duckgo, hushmail,
-                    ctemplar]  # -kolab -lycos(false((( )
-
     if not args.silent:
         show_banner()
 
     if args.list:
         print('Supported email providers: ')
-        print('  ' + ', '.join(map(lambda f: f.__name__, all_checkers)))
+        print('  ' + ', '.join(map(lambda f: f.__name__, CHECKERS)))
 
     target = args.username
 
@@ -1277,23 +1290,13 @@ if __name__ == '__main__':
     if "@" in target:
         target = target.split('@')[0]
 
-    uaLst = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.106 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.101 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"]
-
     if args.providers:
         pset = set(args.providers)
-        checkers = [c for c in all_checkers if c.__name__ in pset]
+        checkers = [c for c in CHECKERS if c.__name__ in pset]
         if not checkers:
             print(f'Can not find providers {", ".join(args.providers)}')
     else:
-        checkers = all_checkers
+        checkers = CHECKERS
 
     if args.tor:
         req_session_fun = via_tor
