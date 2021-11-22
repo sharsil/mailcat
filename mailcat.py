@@ -1,9 +1,11 @@
 #!/usr/bin/python3
-
+import aiohttp
+import asyncio
 import argparse
 import base64
 import datetime
 import json
+import logging
 import random
 import smtplib
 import string as s
@@ -14,10 +16,12 @@ from time import sleep
 from typing import Dict, List
 
 import dns.resolver
-import requests
-from requests_html import HTMLSession  # type: ignore
+
+from requests_html import AsyncHTMLSession  # type: ignore
+from aiohttp_socks import ProxyConnector
 
 
+# TODO: move to main function
 uaLst = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36",
@@ -29,6 +33,9 @@ uaLst = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
 ]
 
+logging.basicConfig(format='%(message)s')
+logger = logging.getLogger('mailcat')
+logger.setLevel(100)
 
 def randstr(num):
     return ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), num))
@@ -37,19 +44,17 @@ def randstr(num):
 def sleeper(sList, s_min, s_max):
     for ind in sList:
         if sList.index(ind) < (len(sList) - 1):
-            # print("less", sList.index(ind))
             sleep(random.uniform(s_min, s_max))
 
 
 def via_tor():
-    session = requests.Session()
-    session.proxies = {'http':  'socks5://127.0.0.1:9050',
-                       'https': 'socks5://127.0.0.1:9050'}
+    connector = ProxyConnector.from_url('socks5://127.0.0.1:9050')
+    session = aiohttp.ClientSession(connector=connector)
     return session
 
 
 def simple_session():
-    return requests.Session()
+    return aiohttp.ClientSession()
 
 
 def code250(mailProvider, target):
@@ -78,20 +83,22 @@ def code250(mailProvider, target):
             return providerLst
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
 
     return []
 
 
-def gmail(target, req_session_fun) -> Dict:
+async def gmail(target, req_session_fun) -> Dict:
     result = {}
     gmailChkLst = code250("gmail.com", target)
     if gmailChkLst:
         result["Google"] = gmailChkLst[0]
+
+    await asyncio.sleep(0)
     return result
 
 
-def yandex(target, req_session_fun) -> Dict:
+async def yandex(target, req_session_fun) -> Dict:
     result = {}
     yaAliasesLst = ["yandex.by",
                     "yandex.kz",
@@ -103,43 +110,13 @@ def yandex(target, req_session_fun) -> Dict:
         yaAliasesLst = ['{}@{}'.format(target, yaAlias) for yaAlias in yaAliasesLst]
         yaMails = list(set(yaChkLst + yaAliasesLst))
         result["Yandex"] = yaMails
+
+    await asyncio.sleep(0)
     return result
 
 
-def proton(target, req_session_fun) -> Dict:
+async def proton(target, req_session_fun) -> Dict:
     result = {}
-    '''
-    protonMails = []
-    protonDomainsLst = ["protonmail.com",
-                        "protonmail.ch",
-                        "pm.me"]
-
-    for ProtonDomain in protonDomainsLst:
-
-        protonChk = code250(ProtonDomain, target)
-
-        if protonChk and protonChk is not None:
-            protonMails += protonChk
-
-        sleep(random.uniform(2, 4))
-
-    if protonMails:
-        print('\n'.join(["[+] Success with {}".format(protonMail) for protonMail in protonMails]))
-
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.7113.93 Safari/537.36'}
-
-    protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
-    protonSucc = []
-    sreq = req_session_fun()
-
-    for proton_domain in protonLst:
-        proton_mail = "{}@{}".format(target, proton_domain)
-        # check_prot_mail = requests.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail), headers=headers)
-        check_prot_mail = sreq.get("https://api.protonmail.ch/pks/lookup?op=get&search={}".format(proton_mail),
-                                   headers=headers, timeout=5)
-        if check_prot_mail.text != "No key found":
-            protonSucc.append(proton_mail)'''
     
     protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
     protonSucc = []
@@ -160,24 +137,27 @@ def proton(target, req_session_fun) -> Dict:
 
     try:
 
-        chkProton = sreq.get(protonURL, headers=headers, timeout=3)
+        chkProton = await sreq.get(protonURL, headers=headers, timeout=3)
 
-        if chkProton.status_code == 409:
-            chkProton = chkProton.json()
-            exists = chkProton['Error']
-            if exists == "Username already used":
-                protonSucc = ["{}@{}".format(target, protodomain) for protodomain in protonLst]
+        async with chkProton:
+            if chkProton.status == 409:
+                resp = await chkProton.json()
+                exists = resp['Error']
+                if exists == "Username already used":
+                    protonSucc = ["{}@{}".format(target, protodomain) for protodomain in protonLst]
 
     except Exception as e:
-        #print(e)
-        pass    
+        logger.error(e, exc_info=True)
     
     if protonSucc:
         result["Proton"] = protonSucc
 
+    await sreq.close()
+
     return result
 
-def mailRu(target, req_session_fun) -> Dict:
+
+async def mailRu(target, req_session_fun) -> Dict:
     result = {}
 
     # headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0', 'Referer': 'https://account.mail.ru/signup?from=main&rf=auth.mail.ru'}
@@ -191,26 +171,29 @@ def mailRu(target, req_session_fun) -> Dict:
             mailruMail = "{}@{}".format(target, maildomain)
             data = {'email': mailruMail}
 
-            # chkMailRU = requests.post('https://account.mail.ru/api/v1/user/exists', headers=headers, data=data)
-            chkMailRU = sreq.post('https://account.mail.ru/api/v1/user/exists', headers=headers, data=data, timeout=5)
+            chkMailRU = await sreq.post('https://account.mail.ru/api/v1/user/exists', headers=headers, data=data, timeout=5)
 
-            if chkMailRU.status_code == 200:
-                exists = chkMailRU.json()['body']['exists']
-                if exists:
-                    mailRuSucc.append(mailruMail)
+            async with chkMailRU:
+                if chkMailRU.status == 200:
+                    resp = await chkMailRU.json()
+                    exists = resp['body']['exists']
+                    if exists:
+                        mailRuSucc.append(mailruMail)
 
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
         sleep(random.uniform(0.5, 2))
 
     if mailRuSucc:
         result["MailRU"] = mailRuSucc
 
+    await sreq.close()
+
     return result
 
 
-def rambler(target, req_session_fun) -> Dict:  # basn risk
+async def rambler(target, req_session_fun) -> Dict:  # basn risk
     result = {}
 
     ramblerMail = ["rambler.ru", "lenta.ru", "autorambler.ru", "myrambler.ru", "ro.ru", "rambler.ua"]
@@ -239,33 +222,35 @@ def rambler(target, req_session_fun) -> Dict:  # basn risk
                        "X-Client-Request-Id": reqID}
 
             ramblerJSON = {"method": "Rambler::Id::login_available", "params": [{"login": targetMail}], "rpc": "2.0"}
-            # ramblerChk = requests.post(ramblerChkURL, headers=headers, json=ramblerJSON)
-            ramblerChk = sreq.post(ramblerChkURL, headers=headers, json=ramblerJSON, timeout=5)
+            ramblerChk = await sreq.post(ramblerChkURL, headers=headers, json=ramblerJSON, timeout=5)
 
-            if ramblerChk.status_code == 200:
-                try:
-                    exist = ramblerChk.json()['result']['profile']['status']
-                    if exist == "exist":
-                        ramblerSucc.append(targetMail)
-                        # print("[+] Success with {}".format(targetMail))
-                    # else:
-                    #    print("[-]".format(ramblerChk.text))
-                except KeyError as e:
-                    pass
-                    # print(e)
+            async with ramblerChk:
+                if ramblerChk.status == 200:
+                    try:
+                        resp = await ramblerChk.json(content_type=None)
+                        exist = resp['result']['profile']['status']
+                        if exist == "exist":
+                            ramblerSucc.append(targetMail)
+                            # print("[+] Success with {}".format(targetMail))
+                        # else:
+                        #    print("[-]".format(ramblerChk.text))
+                    except KeyError as e:
+                        logger.error(e, exc_info=True)
 
             sleep(random.uniform(4, 6))  # don't reduce
 
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
     if ramblerSucc:
         result["Rambler"] = ramblerSucc
 
+    await sreq.close()
+
     return result
 
 
-def tuta(target, req_session_fun) -> Dict:
+async def tuta(target, req_session_fun) -> Dict:
     result = {}
 
     headers = {
@@ -282,29 +267,33 @@ def tuta(target, req_session_fun) -> Dict:
             targetMail = "{}@{}".format(target, maildomain)
             tutaURL = "https://mail.tutanota.com/rest/sys/mailaddressavailabilityservice?_body="
 
-            tutaCheck = sreq.get(
+            tutaCheck = await sreq.get(
                 '{}%7B%22_format%22%3A%220%22%2C%22mailAddress%22%3A%22{}%40{}%22%7D'.format(tutaURL, target,
                                                                                              maildomain),
                 headers=headers, timeout=5)
 
-            if tutaCheck.status_code == 200:
-                exists = tutaCheck.json()['available']
+            async with tutaCheck:
+                if tutaCheck.status == 200:
+                    resp = await tutaCheck.json()
+                    exists = resp['available']
 
-                if exists == "0":
-                    tutaSucc.append(targetMail)
+                    if exists == "0":
+                        tutaSucc.append(targetMail)
 
             sleep(random.uniform(2, 4))
 
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
     if tutaSucc:
         result["Tutanota"] = tutaSucc
 
+    await sreq.close()
+
     return result
 
 
-def yahoo(target, req_session_fun) -> Dict:
+async def yahoo(target, req_session_fun) -> Dict:
     result = {}
 
     yahooURL = "https://login.yahoo.com:443/account/module/create?validateField=yid"
@@ -321,43 +310,48 @@ def yahoo(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        yahooChk = sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=5)
+        yahooChk = await sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=5)
 
-        if '"IDENTIFIER_EXISTS"' in yahooChk.text:
+        body = await yahooChk.text()
+        if '"IDENTIFIER_EXISTS"' in body:
             result["Yahoo"] = "{}@yahoo.com".format(target)
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def outlook(target, req_session_fun) -> Dict:
+async def outlook(target, req_session_fun) -> Dict:
     result = {}
     liveSucc = []
-    _sreq = HTMLSession()
+    sreq = AsyncHTMLSession(loop=asyncio.get_event_loop())
     headers = {"User-Agent": random.choice(uaLst)}
     liveLst = ["outlook.com", "hotmail.com"]
     url_template = 'https://signup.live.com/?username={}@{}&uaid=f746d3527c20414d8c86fd7f96613d85&lic=1'
 
     for maildomain in liveLst:
         try:
-            liveChk = _sreq.get(url_template.format(target, maildomain), headers=headers)
-            liveChk.html.render(sleep=10)
+            liveChk = await sreq.get(url_template.format(target, maildomain), headers=headers)
+            await liveChk.html.arender(sleep=10)
 
             if "suggLink" in liveChk.html.html:
                 liveSucc.append("{}@{}".format(target, maildomain))
 
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
     if liveSucc:
         result["Live"] = liveSucc
 
+    await sreq.close()
+
     return result
 
 
-def zoho(target, req_session_fun) -> Dict:
+async def zoho(target, req_session_fun) -> Dict:
     result = {}
 
     headers = {
@@ -371,20 +365,25 @@ def zoho(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        zohoChk = sreq.post(zohoURL, headers=headers, data=zohoPOST, timeout=10)
-        if zohoChk.status_code == 200:
-            # if "IAM.ERROR.USERNAME.NOT.AVAILABLE" in zohoChk.text:
-            #    print("[+] Success with {}@zohomail.com".format(target))
-            if zohoChk.json()['error']['username'] == 'This username is taken':
-                result["Zoho"] = "{}@zohomail.com".format(target)
-                # print("[+] Success with {}@zohomail.com".format(target))
+        zohoChk = await sreq.post(zohoURL, headers=headers, data=zohoPOST, timeout=10)
+
+        async with zohoChk:
+            if zohoChk.status == 200:
+                # if "IAM.ERROR.USERNAME.NOT.AVAILABLE" in zohoChk.text:
+                #    print("[+] Success with {}@zohomail.com".format(target))
+                resp = await zohoChk.json()
+                if resp['error']['username'] == 'This username is taken':
+                    result["Zoho"] = "{}@zohomail.com".format(target)
+                    # print("[+] Success with {}@zohomail.com".format(target))
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def lycos(target, req_session_fun) -> Dict:
+async def lycos(target, req_session_fun) -> Dict:
     result = {}
 
     lycosURL = "https://registration.lycos.com/usernameassistant.php?validate=1&m_AID=0&t=1625674151843&m_U={}&m_PR=27&m_SESSIONKEY=4kCL5VaODOZ5M5lBF2lgVONl7tveoX8RKmedGRU3XjV3xRX5MqCP2NWHKynX4YL4".format(
@@ -397,19 +396,22 @@ def lycos(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        # lycosChk = requests.get(lycosURL, headers=headers)
-        lycosChk = sreq.get(lycosURL, headers=headers, timeout=10)
+        lycosChk = await sreq.get(lycosURL, headers=headers, timeout=10)
 
-        if lycosChk.status_code == 200:
-            if lycosChk.text == "Unavailable":
-                result["Lycos"] = "{}@lycos.com".format(target)
+        async with lycosChk:
+            if lycosChk.status == 200:
+                resp = await lycosChk.text()
+                if resp == "Unavailable":
+                    result["Lycos"] = "{}@lycos.com".format(target)
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false positives after
+async def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false positives after
     result = {}
 
     eclipsoSucc = []
@@ -436,23 +438,27 @@ def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false positives
 
             eclipsoURL = "https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={}".format(
                 targetMail)
-            chkEclipso = sreq.get(eclipsoURL, headers=headers, timeout=5)
+            chkEclipso = await sreq.get(eclipsoURL, headers=headers, timeout=5)
 
-            if chkEclipso.status_code == 200:
-                if '>0<' in chkEclipso.text:
-                    eclipsoSucc.append(targetMail)
+            async with chkEclipso:
+                if chkEclipso.status == 200:
+                    resp = await chkEclipso.text()
+                    if '>0<' in resp:
+                        eclipsoSucc.append(targetMail)
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
         sleep(random.uniform(2, 4))
 
     if eclipsoSucc:
         result["Eclipso"] = eclipsoSucc
 
+    await sreq.close()
+
     return result
 
 
-def posteo(target, req_session_fun) -> Dict:
+async def posteo(target, req_session_fun) -> Dict:
     result = {}
 
     posteoLst = [
@@ -515,22 +521,24 @@ def posteo(target, req_session_fun) -> Dict:
 
     sreq = req_session_fun()
     try:
+        posteoURL = "https://posteo.de/users/new/check_username?user%5Busername%5D={}".format(target)
+        chkPosteo = await sreq.get(posteoURL, headers=headers, timeout=5)
 
-        eclipsoURL = "https://posteo.de/users/new/check_username?user%5Busername%5D={}".format(target)
-        chkEclipso = sreq.get(eclipsoURL, headers=headers, timeout=5)
-
-        if chkEclipso.status_code == 200:
-            if chkEclipso.text == "false":
-                result["Posteo"] = ["{}@posteo.net".format(target),
-                                    "~50 aliases: https://posteo.de/en/help/which-domains-are-available-to-use-as-a-posteo-alias-address"]
-
+        async with chkPosteo:
+            if chkPosteo.status == 200:
+                resp = await chkPosteo.text()
+                if resp == "false":
+                    result["Posteo"] = ["{}@posteo.net".format(target),
+                                        "~50 aliases: https://posteo.de/en/help/which-domains-are-available-to-use-as-a-posteo-alias-address"]
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def mailbox(target, req_session_fun) -> Dict:  # tor RU
+async def mailbox(target, req_session_fun) -> Dict:  # tor RU
     result = {}
 
     mailboxURL = "https://register.mailbox.org:443/ajax"
@@ -542,21 +550,21 @@ def mailbox(target, req_session_fun) -> Dict:  # tor RU
     sreq = req_session_fun()
 
     try:
+        chkMailbox = await sreq.post(mailboxURL, headers=headers, json=mailboxJSON, timeout=10)
 
-        chkMailbox = sreq.post(mailboxURL, headers=headers, json=mailboxJSON, timeout=10)
-
-        if chkMailbox.text == existiert:
-            result["MailBox"] = "{}@mailbox.org".format(target)
-            # print("[+] Success with {}@mailbox.org".format(target))
-
+        async with chkMailbox:
+            resp = await chkMailbox.text()
+            if resp == existiert:
+                result["MailBox"] = "{}@mailbox.org".format(target)
     except Exception as e:
-        # print(e)
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def firemail(target, req_session_fun) -> Dict:  # tor RU
+async def firemail(target, req_session_fun) -> Dict:  # tor RU
     result = {}
 
     firemailSucc = []
@@ -573,23 +581,27 @@ def firemail(target, req_session_fun) -> Dict:  # tor RU
             targetMail = "{}@{}".format(target, firemailDomain)
 
             firemailURL = "https://firemail.de/index.php?action=checkAddressAvailability&address={}".format(targetMail)
-            chkFiremail = sreq.get(firemailURL, headers=headers, timeout=10)
+            chkFiremail = await sreq.get(firemailURL, headers=headers, timeout=10)
 
-            if chkFiremail.status_code == 200:
-                if '>0<' in chkFiremail.text:
-                    firemailSucc.append("{}".format(targetMail))
+            async with chkFiremail:
+                if chkFiremail.status == 200:
+                    resp = await chkFiremail.text()
+                    if '>0<' in resp:
+                        firemailSucc.append("{}".format(targetMail))
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
         sleep(random.uniform(2, 4))
 
     if firemailSucc:
         result["Firemail"] = firemailSucc
 
+    await sreq.close()
+
     return result
 
 
-def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
+async def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
     result = {}
 
     # Registration form on fastmail website automatically lowercase all input.
@@ -597,7 +609,7 @@ def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR 
     target = target.lower()
 
     # validate target syntax to prevent false positive results
-    match = re.search('^\w{3,40}$', target)
+    match = re.search(r'^\w{3,40}$', target)
 
     if not match:
         return result
@@ -654,32 +666,29 @@ def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR 
                         "using": ["https://www.fastmail.com/dev/signup"]}
 
         try:
-            chkFastmail = sreq.post(fastmailURL, headers=headers, json=fastmailJSON, timeout=5)
+            chkFastmail = await sreq.post(fastmailURL, headers=headers, json=fastmailJSON, timeout=5)
 
-            if chkFastmail.status_code == 200:
-                try:
-                    fmJson = chkFastmail.json()['methodResponses'][0][1]['isAvailable']
+            async with chkFastmail:
+                if chkFastmail.status == 200:
+                    resp = await chkFastmail.json()
+                    fmJson = resp['methodResponses'][0][1]['isAvailable']
                     if fmJson is False:
                         fastmailSucc.append("{}".format(fmmail))
-                        # print('\n'.join(["[+] Success with {}@{}".format(target, posteod) for posteod in posteoLst]))
-
-                except Exception as e:
-                    pass
-                    # print(e)
 
         except Exception as e:
-            pass
-            # print(e)
+            logger.error(e, exc_info=True)
 
         sleep(random.uniform(0.5, 1.1))
 
     if fastmailSucc:
         result["Fastmail"] = fastmailSucc
 
+    await sreq.close()
+
     return result
 
 
-def startmail(target, req_session_fun) -> Dict:  # TOR
+async def startmail(target, req_session_fun) -> Dict:  # TOR
     result = {}
 
     startmailURL = "https://mail.startmail.com:443/api/AvailableAddresses/{}%40startmail.com".format(target)
@@ -688,18 +697,21 @@ def startmail(target, req_session_fun) -> Dict:  # TOR
     sreq = req_session_fun()
 
     try:
-        chkStartmail = sreq.get(startmailURL, headers=headers, timeout=10)
+        chkStartmail = await sreq.get(startmailURL, headers=headers, timeout=10)
 
-        if chkStartmail.status_code == 404:
-            result["StartMail"] = "{}@startmail.com".format(target)
+        async with chkStartmail:
+            if chkStartmail.status == 404:
+                result["StartMail"] = "{}@startmail.com".format(target)
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def kolab(target, req_session_fun) -> Dict:
+async def kolab(target, req_session_fun) -> Dict:
     result: Dict[str, List] = {}
 
     kolabLst = ["mykolab.com",
@@ -779,9 +791,9 @@ def kolab(target, req_session_fun) -> Dict:
                "X-Requested-With": "XMLHttpRequest"}
     sreq = req_session_fun()
 
-    kolabStatus = sreq.post(kolabURL, headers={"User-Agent": random.choice(uaLst)}, timeout=10)
+    kolabStatus = await sreq.post(kolabURL, headers={"User-Agent": random.choice(uaLst)}, timeout=10)
 
-    if kolabStatus.status_code == 422:
+    if kolabStatus.status == 422:
 
         kolabpass = randstr(12)
         kolabsuc = "The specified login is not available."
@@ -798,10 +810,10 @@ def kolab(target, req_session_fun) -> Dict:
 
             try:
                 # chkKolab = sreq.post(kolabURL, headers=headers, data=kolabPOST)
-                chkKolab = sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=10)
-                print(chkKolab.text)
+                chkKolab = await sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=10)
+                resp = await chkKolab.text()
 
-                if chkKolab.status_code == 200:
+                if chkKolab.status == 200:
 
                     kolabJSON = chkKolab.json()
                     if kolabJSON["errors"]["login"] == kolabsuc:
@@ -812,12 +824,14 @@ def kolab(target, req_session_fun) -> Dict:
                             print(kolabJSON["errors"])
 
             except Exception as e:
-                pass
+                logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def bigmir(target, req_session_fun) -> Dict:
+async def bigmir(target, req_session_fun) -> Dict:
     result = {}
 
     bigmirSucc = []
@@ -838,26 +852,30 @@ def bigmir(target, req_session_fun) -> Dict:
 
             bm_data = "login={}@{}".format(target, maildomain)
 
-            bigmirChk = sreq.post(bigmirChkJS, headers=headers, data=bm_data, timeout=10)
+            bigmirChk = await sreq.post(bigmirChkJS, headers=headers, data=bm_data, timeout=10)
 
-            if bigmirChk.status_code == 200:
-                exist = "'free': false"
+            async with bigmirChk:
+                if bigmirChk.status == 200:
+                    exist = "'free': false"
 
-                if "'free': false" in bigmirChk.text:
-                    bigmirSucc.append("{}@{}".format(target, maildomain))
+                    resp = await bigmirChk.text()
+                    if "'free': false" in resp:
+                        bigmirSucc.append("{}@{}".format(target, maildomain))
 
             sleep(random.uniform(2, 4))
 
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
     if bigmirSucc:
         result["Bigmir"] = bigmirSucc
 
+    await sreq.close()
+
     return result
 
 
-def tutby(target, req_session_fun) -> Dict:  # Down
+async def tutby(target, req_session_fun) -> Dict:  # Down
     result = {}
 
     smtp_check = code250('tut.by', target)
@@ -881,23 +899,24 @@ def tutby(target, req_session_fun) -> Dict:  # Down
         }
 
         tutbyData = f"action=lgval&l={target64}"
-        tutbyChk = sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=10)
+        tutbyChk = await sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=10)
 
-        if tutbyChk.status_code == 200:
+        if tutbyChk.status == 200:
             exist = '[{"success":true}]'
+            resp = await tutbyChk.text()
 
-            if exist == tutbyChk.text:
+            if exist == resp:
                 result['Tut.by'] = '{}@tut.by'.format(target)
-                # print("[+] Success with {}@tut.by".format(target))
-                pass
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def xmail(target, req_session_fun) -> Dict:
+async def xmail(target, req_session_fun) -> Dict:
     result = {}
 
     sreq = req_session_fun()
@@ -912,19 +931,22 @@ def xmail(target, req_session_fun) -> Dict:
     xmailPOST = {"username": target, "firstname": '', "lastname": ''}
 
     try:
+        xmailChk = await sreq.post(xmailURL, headers=headers, data=xmailPOST, timeout=10)
 
-        xmailChk = sreq.post(xmailURL, headers=headers, data=xmailPOST, timeout=10).json()
-
-        if not xmailChk['username']:
-            result["Xmail"] = "{}@xmail.net".format(target)
+        async with xmailChk:
+            resp = await xmailChk.json()
+            if not resp['username']:
+                result["Xmail"] = "{}@xmail.net".format(target)
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def ukrnet(target, req_session_fun) -> Dict:
+async def ukrnet(target, req_session_fun) -> Dict:
     result = {}
 
     ukrnet_reg_urk = "https://accounts.ukr.net:443/registration"
@@ -938,29 +960,34 @@ def ukrnet(target, req_session_fun) -> Dict:
         "Upgrade-Insecure-Requests": "1"}
 
     sreq = req_session_fun()
+
     try:
 
-        get_reg_ukrnet = sreq.get(ukrnet_reg_urk, headers=headers, timeout=10)
+        get_reg_ukrnet = await sreq.get(ukrnet_reg_urk, headers=headers, timeout=10)
 
-        if get_reg_ukrnet.status_code == 200:
-            ukrnet_cookies = sreq.cookies.get_dict()
+        async with get_reg_ukrnet:
+            if get_reg_ukrnet.status == 200:
+                ukrnet_cookies = sreq.cookie_jar
+                if ukrnet_cookies:
+                    ukrnetURL = "https://accounts.ukr.net:443/api/v1/registration/reserve_login"
+                    ukrnetPOST = {"login": target}
 
-            if ukrnet_cookies:
-                ukrnetURL = "https://accounts.ukr.net:443/api/v1/registration/reserve_login"
-                ukrnetPOST = {"login": target}
+                    ukrnetChk = await sreq.post(ukrnetURL, headers=headers, json=ukrnetPOST, timeout=10)
 
-                ukrnetChk = sreq.post(ukrnetURL, headers=headers, cookies=ukrnet_cookies, json=ukrnetPOST, timeout=10)
-
-                if ukrnetChk.status_code == 200:
-                    if not ukrnetChk.json()['available']:
-                        result["UkrNet"] = "{}@ukr.net".format(target)
+                    async with ukrnetChk:
+                        if ukrnetChk.status == 200:
+                            resp = await ukrnetChk.json()
+                            if not resp['available']:
+                                result["UkrNet"] = "{}@ukr.net".format(target)
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def runbox(target, req_session_fun) -> Dict:
+async def runbox(target, req_session_fun) -> Dict:
     result = {}
 
     runboxSucc = []
@@ -1010,10 +1037,11 @@ def runbox(target, req_session_fun) -> Dict:
                 "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
                 "account_number": "", "timezone": "undefined", "runbox7": "1"}
 
-        chkRunbox = sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=5)
+        chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=5)
 
-        if chkRunbox.status_code == 200:
-            if "The specified username is already taken" in chkRunbox.text:
+        if chkRunbox.status == 200:
+            resp = await chkRunbox.text()
+            if "The specified username is already taken" in resp:
                 runboxSucc.append("{}@{}".format(target, rboxdomain))
 
         sleep(random.uniform(1, 2.1))
@@ -1021,10 +1049,12 @@ def runbox(target, req_session_fun) -> Dict:
     if runboxSucc:
         result["Runbox"] = runboxSucc
 
+    await sreq.close()
+
     return result
 
 
-def iCloud(target, req_session_fun) -> Dict:
+async def iCloud(target, req_session_fun) -> Dict:
     result: Dict[str, List] = {}
 
     domains = [
@@ -1033,9 +1063,10 @@ def iCloud(target, req_session_fun) -> Dict:
         'mac.com',
     ]
 
+    sreq = req_session_fun()
+
     for domain in domains:
         email = f'{target}@{domain}'
-        sreq = req_session_fun()
         headers = {
             'User-Agent': random.choice(uaLst),
             'sstt': 'zYEaY3WeI76oAG%2BCNPhCiGcKUCU0SIQ1cIO2EMepSo8egjarh4MvVPqxGOO20TYqlbJI%2Fqs57WwAoJarOPukJGJvgOF7I7C%2B1jAE5vZo%2FSmYkvi2e%2Bfxj1od1xJOf3lnUXZlrnL0QWpLfaOgOwjvorSMJ1iuUphB8bDqjRzyb76jzDU4hrm6TzkvxJdlPCCY3JVTfAZFgXRoW9VlD%2Bv3VF3in1RSf6Er2sOS12%2FZJR%2Buo9ubA2KH9RLRzPlr1ABtsRgw6r4zbFbORaKTSVWGDQPdYCaMsM4ebevyKj3aIxXa%2FOpS6SHcx1KrvtOAUVhR9nsfZsaYfZvDa6gzpcNBF9domZJ1p8MmThEfJra6LEuc9ssZ3aWn9uKqvT3pZIVIbgdZARL%2B6SK1YCN7',
@@ -1043,16 +1074,18 @@ def iCloud(target, req_session_fun) -> Dict:
         }
 
         data = {'id': email}
-        check = sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=5)
+        check = await sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=5)
         if check.headers and check.headers.get('Location', '').startswith('/password/authenticationmethod'):
             if not result:
                 result = {'iCloud': []}
             result['iCloud'].append(email)
 
+    await sreq.close()
+
     return result
 
 
-def duckgo(target, req_session_fun) -> Dict:
+async def duckgo(target, req_session_fun) -> Dict:
     result = {}
 
     duckURL = "https://quack.duckduckgo.com/api/auth/signup"
@@ -1070,19 +1103,22 @@ def duckgo(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        checkDuck = sreq.post(duckURL, headers=headers, data=data, timeout=5)
+        checkDuck = await sreq.post(duckURL, headers=headers, data=data, timeout=5)
 
+        resp = await checkDuck.text()
         # if checkDuck.json()['error'] == "unavailable_username":
-        if "unavailable_username" in checkDuck.text:
+        if "unavailable_username" in resp:
             result["DuckGo"] = "{}@duck.com".format(target)
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def ctemplar(target, req_session_fun) -> Dict:
+async def ctemplar(target, req_session_fun) -> Dict:
 
     result = {}
     sreq = req_session_fun()
@@ -1097,20 +1133,23 @@ def ctemplar(target, req_session_fun) -> Dict:
                "Origin": "https://mail.ctemplar.com"}
 
     try:
-        chkCT = sreq.post(ctURL, headers=headers, json=ctJSON)
+        chkCT = await sreq.post(ctURL, headers=headers, json=ctJSON)
 
-        if chkCT.status_code == 200:
-            ct_exists = chkCT.json()['exists']
+        if chkCT.status == 200:
+            resp = await chkCT.json()
+            ct_exists = resp['exists']
             if ct_exists:
                 result["CTemplar"] = "{}@ctemplar.com".format(target)
 
     except Exception as e:
-        pass
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
 
     return result
 
 
-def hushmail(target, req_session_fun) -> Dict:
+async def hushmail(target, req_session_fun) -> Dict:
 
     result = {}
 
@@ -1150,20 +1189,23 @@ def hushmail(target, req_session_fun) -> Dict:
                 "hush_additional_tos": '', "hush_email_opt_in": '', "isValidAjax": "newaccountform"}
 
         try:
-            hushCheck = sreq.post(hushURL, headers=headers, data=data, timeout=5)
+            hushCheck = await sreq.post(hushURL, headers=headers, data=data, timeout=5)
 
-            if hushCheck.status_code == 200:
-                if "'{}' is not available".format(target) in hushCheck.json()['formValidation']['hush_username']:
+            if hushCheck.status == 200:
+                resp = await hushCheck.json()
+                if "'{}' is not available".format(target) in resp['formValidation']['hush_username']:
                     hushMail = "{}@{}".format(target, hushdomain)
                     hushSucc.append(hushMail)
 
         except Exception as e:
-            pass
+            logger.error(e, exc_info=True)
 
         sleeper(hushDomains, 1.1, 2.2)
 
     if hushSucc:
         result["HushMail"] = hushSucc
+
+    await sreq.close()
 
     return result
 
@@ -1191,11 +1233,12 @@ def show_banner():
         sleep(0.1337)
 
 
-def print_results(checker, target, req_session_fun, is_verbose_mode):
+async def print_results(checker, target, req_session_fun, is_verbose_mode):
     checker_name = checker.__name__
     if is_verbose_mode:
         print(f'Running {checker_name} checker for {target}...')
-    res = checker(target, req_session_fun)
+
+    res = await checker(target, req_session_fun)
 
     try:
         if not res:
@@ -1265,12 +1308,22 @@ if __name__ == '__main__':
         help="Verbose output about search progress.",
     )
     parser.add_argument(
+        '-d',
+        '--debug',
+        action="store_true",
+        default=False,
+        help="Display checking errors.",
+    )
+    parser.add_argument(
         '--tor',
         action="store_true",
         default=False,
         help="Use Tor where you need it",
     )
     args = parser.parse_args()
+
+    if args.debug:
+        logger.setLevel(logging.WARNING)
 
     if not args.silent:
         show_banner()
@@ -1300,14 +1353,10 @@ if __name__ == '__main__':
 
     if args.tor:
         req_session_fun = via_tor
+        print('Using tor to make requests...')
     else:
         req_session_fun = simple_session
 
-    threads = []
-    for checker in checkers:
-        t = threading.Thread(target=print_results, args=(checker, target, req_session_fun, args.verbose))
-        t.start()
-        threads.append(t)
+    jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose) for checker in checkers])
 
-    for t in threads:
-        t.join()
+    asyncio.get_event_loop().run_until_complete(jobs)
