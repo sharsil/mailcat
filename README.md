@@ -64,4 +64,6 @@ Total 26 providers, > 60 domains and > 100 aliases.
 
 [bellingcat: First Steps to Getting Started in Open Source Research](https://www.bellingcat.com/resources/2021/11/09/first-steps-to-getting-started-in-open-source-research/)
 
+[OS2INT verifying email addresses using Mailcat](https://os2int.com/toolbox/verifying-email-usernames-using-mailcat/)
+
 [hwosint - Twitter post](https://twitter.com/harrywald80/status/1439115143485534212)
