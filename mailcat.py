@@ -1209,6 +1209,102 @@ async def hushmail(target, req_session_fun) -> Dict:
 
     return result
 
+async def emailn(target, req_session_fun) -> Dict:
+    result = {}
+
+    emailnURL = "https://www.emailn.de/webmail/index.php?action=checkAddressAvailability&address={}@emailn.de".format(target)
+    headers = {'User-Agent': random.choice(uaLst)}
+    sreq = req_session_fun()
+
+    try:
+        emailnChk = await sreq.get(emailnURL, headers=headers, timeout=10)
+
+        async with emailnChk:
+            if emailnChk.status == 200:
+                resp = await emailnChk.text()
+                if ">0<" in resp:
+                    result["emailn"] = "{}@emailn.de".format(target)
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
+
+async def aikq(target, req_session_fun) -> Dict:
+    result = {}
+    aikqSucc = []
+
+    aikqLst = ["aikq.com",
+               "aikq.co",
+               "aikq.eu",
+               "aikq.de",
+               "mails.eu",
+               "aikq.net",
+               "aikq.org",
+               "aikq.biz",
+               "aikq.tv",
+               "aikq.at",
+               "aikq.uk",
+               "aikq.co.uk",
+               "aikq.fr",
+               "aikq.be",
+               "aikq.pl",
+               "aikq.email",
+               "aikq.info",
+               "mailbox.info",
+               "mails.info",
+               "aikq.cloud",
+               "aikq.chat",
+               "aikq.name",
+               "aikq.wiki",
+               "aikq.ae",
+               "aikq.asia",
+               "aikq.by",
+               "aikq.com.br",
+               "aikq.cz",
+               "aikq.ie",
+               "aikq.in",
+               "aikq.jp",
+               "aikq.li",
+               "aikq.me",
+               "aikq.mx",
+               "aikq.nl",
+               "aikq.nz",
+               "aikq.qa",
+               "aikq.sk",
+               "aikq.tw",
+               "aikq.us",
+               "aikq.ws"]
+
+
+    headers = {'User-Agent': random.choice(uaLst)}
+    sreq = req_session_fun()
+
+    for maildomain in aikqLst:
+        try:
+            targetMail = "{}@{}".format(target, maildomain)
+            aikqUrl = "https://www.aikq.de/index.php?action=checkAddressAvailability&address={}".format(targetMail)
+            chkAikq = await sreq.get(aikqUrl, headers=headers, timeout=5)
+
+            async with chkAikq:
+                if chkAikq.status == 200:
+                    resp = await chkAikq.text()
+                    if '>0<' in resp:
+                        aikqSucc.append(targetMail)
+        except Exception as e:
+            logger.error(e, exc_info=True)
+
+        sleep(random.uniform(2, 4))
+
+    if aikqSucc:
+        result["Aikq"] = aikqSucc
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 
 
@@ -1263,7 +1359,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             firemail, fastmail, startmail,
             bigmir, tutby, xmail, ukrnet,
             runbox, iCloud, duckgo, hushmail,
-            ctemplar]  # -kolab -lycos(false((( )
+            ctemplar, aikq, emailn]  # -kolab -lycos(false((( )
 
 
 if __name__ == '__main__':
