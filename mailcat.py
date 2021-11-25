@@ -1209,6 +1209,7 @@ async def hushmail(target, req_session_fun) -> Dict:
 
     return result
 
+
 async def emailn(target, req_session_fun) -> Dict:
     result = {}
 
@@ -1305,9 +1306,39 @@ async def aikq(target, req_session_fun) -> Dict:
 
     return result
 
+
+async def vivaldi(target, req_session_fun) -> Dict:
+    result = {}
+
+    vivaldiURL = "https://login.vivaldi.net:443/profile/validateField"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://login.vivaldi.net",
+        "Referer": "https://login.vivaldi.net/profile/id/signup"
+    }
+
+    vivaldiPOST = {"field": "username", "value": target}
+
+    sreq = req_session_fun()
+
+    try:
+        vivaldiChk = await sreq.post(vivaldiURL, headers=headers, data=vivaldiPOST, timeout=5)
+
+        body = await vivaldiChk.json(content_type=None)
+
+        if 'error' in body and body['error'] == "User exists [1007]":
+            result["Vivaldi"] = "{}@vivaldi.net".format(target)
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
+
 ####################################################################################
-
-
 def show_banner():
     banner = r"""
 
@@ -1359,7 +1390,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             firemail, fastmail, startmail,
             bigmir, tutby, xmail, ukrnet,
             runbox, iCloud, duckgo, hushmail,
-            ctemplar, aikq, emailn]  # -kolab -lycos(false((( )
+            ctemplar, aikq, emailn, vivaldi]  # -kolab -lycos(false((( )
 
 
 if __name__ == '__main__':

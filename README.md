@@ -57,6 +57,7 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | CTemplar            | ctemplar.com                           | Registration      |
 | emailn              | emailn.de                              | Registration      |
 | aikq                | aikq.de + 40 other domains             | Registration      |
+| Vivaldi             | vivaldi.net                            | Registration      |
 
 ## Mentions and articles
 
