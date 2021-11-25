@@ -55,6 +55,8 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | DuckGo              | duck.com                               | Registration      | 
 | HushMail            | hushmail.com + 5 other domains         | Registration      |
 | CTemplar            | ctemplar.com                           | Registration      |
+| emailn              | emailn.de                              | Registration      |
+| aikq                | aikq.de + 40 other domains             | Registration      |
 
 ## Mentions and articles
 
