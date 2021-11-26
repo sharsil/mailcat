@@ -58,6 +58,7 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | emailn              | emailn.de                              | Registration      |
 | aikq                | aikq.de + 40 other domains             | Registration      |
 | Vivaldi             | vivaldi.net                            | Registration      |
+| mailDe              | mail.de                                | SMTP              |
 
 ## Mentions and articles
 
