@@ -1337,6 +1337,13 @@ async def vivaldi(target, req_session_fun) -> Dict:
 
     return result
 
+async def mailDe(target, req_session_fun) -> Dict:
+    result = {}
+    mailChkLst = code250("mail.de", target)
+    if mailChkLst:
+        result["mail.de"] = mailChkLst[0]
+    await asyncio.sleep(0)
+    return result
 
 ####################################################################################
 def show_banner():
@@ -1390,8 +1397,8 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             firemail, fastmail, startmail,
             bigmir, tutby, xmail, ukrnet,
             runbox, iCloud, duckgo, hushmail,
-            ctemplar, aikq, emailn, vivaldi]  # -kolab -lycos(false((( )
-
+            ctemplar, aikq, emailn, vivaldi,
+            mailDe]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
