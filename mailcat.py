@@ -61,6 +61,8 @@ def code250(mailProvider, target):
     target = target
     providerLst = []
 
+    error = ''
+
     randPref = ''.join(random.sample(s.ascii_lowercase, 6))
     fromAddress = "{}@{}".format(randPref, mailProvider)
     targetMail = "{}@{}".format(target, mailProvider)
@@ -80,22 +82,26 @@ def code250(mailProvider, target):
 
         if code == 250:
             providerLst.append(targetMail)
-            return providerLst
+
+        message_str = message.decode().lower()
+        if 'ban' in message_str or 'denied' in message_str:
+            error = message_str
 
     except Exception as e:
         logger.error(e, exc_info=True)
+        error = str(e)
 
-    return []
+    return providerLst, error
 
 
 async def gmail(target, req_session_fun) -> Dict:
     result = {}
-    gmailChkLst = code250("gmail.com", target)
+    gmailChkLst, error = code250("gmail.com", target)
     if gmailChkLst:
         result["Google"] = gmailChkLst[0]
 
     await asyncio.sleep(0)
-    return result
+    return result, error
 
 
 async def yandex(target, req_session_fun) -> Dict:
@@ -105,14 +111,14 @@ async def yandex(target, req_session_fun) -> Dict:
                     "yandex.ua",
                     "yandex.com",
                     "ya.ru"]
-    yaChkLst = code250("yandex.ru", target)
+    yaChkLst, error = code250("yandex.ru", target)
     if yaChkLst:
         yaAliasesLst = ['{}@{}'.format(target, yaAlias) for yaAlias in yaAliasesLst]
         yaMails = list(set(yaChkLst + yaAliasesLst))
         result["Yandex"] = yaMails
 
     await asyncio.sleep(0)
-    return result
+    return result, error
 
 
 async def proton(target, req_session_fun) -> Dict:
@@ -878,7 +884,7 @@ async def bigmir(target, req_session_fun) -> Dict:
 async def tutby(target, req_session_fun) -> Dict:  # Down
     result = {}
 
-    smtp_check = code250('tut.by', target)
+    smtp_check, error = code250('tut.by', target)
     if smtp_check:
         result['Tut.by'] = smtp_check[0]
         return result
@@ -910,10 +916,11 @@ async def tutby(target, req_session_fun) -> Dict:  # Down
 
     except Exception as e:
         logger.error(e, exc_info=True)
+        error = str(e)
 
     await sreq.close()
 
-    return result
+    return result, error
 
 
 async def xmail(target, req_session_fun) -> Dict:
@@ -1372,15 +1379,19 @@ async def print_results(checker, target, req_session_fun, is_verbose_mode):
     if is_verbose_mode:
         print(f'Running {checker_name} checker for {target}...')
 
+    err = None
     res = await checker(target, req_session_fun)
 
-    try:
-        if not res:
-            if is_verbose_mode:
-                print(f'No results for {checker_name}')
-            res = {}
-    except Exception as e:
-        print(f'Error while checking {checker_name}: {e}')
+    if isinstance(res, tuple):
+        res, err = res
+
+    if not res:
+        if is_verbose_mode:
+            print(f'No results for {checker_name}')
+        res = {}
+
+    if err:
+        print(f'Error while checking {checker_name}: {err}')
         return
 
     for provider, emails in res.items():
