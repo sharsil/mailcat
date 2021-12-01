@@ -1346,11 +1346,11 @@ async def vivaldi(target, req_session_fun) -> Dict:
 
 async def mailDe(target, req_session_fun) -> Dict:
     result = {}
-    mailChkLst = code250("mail.de", target)
+    mailChkLst, error = code250("mail.de", target)
     if mailChkLst:
         result["mail.de"] = mailChkLst[0]
     await asyncio.sleep(0)
-    return result
+    return result, error
 
 ####################################################################################
 def show_banner():
