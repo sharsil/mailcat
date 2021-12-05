@@ -18,10 +18,13 @@ Then just run the script:
 
 	./mailcat.py username
 
-It's recommended to run script through Tor and proxies. You can use internal Tor routing (`--tor`) or proxychains:
+It's recommended to run script through Tor or proxy. You can use internal Tor routing (`--tor`) or proxychains.
+Examples:
 
 	./mailcat.py --tor username
 	proxychains4 -q python3 mailcat.py username
+
+	./mailcat.py username --proxy http://1.2.3.4:8080
 
 ## Supported providers
 

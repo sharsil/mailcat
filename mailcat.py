@@ -47,6 +47,15 @@ def sleeper(sList, s_min, s_max):
             sleep(random.uniform(s_min, s_max))
 
 
+def via_proxy(proxy_str):
+    def via():
+        connector = ProxyConnector.from_url(proxy_str)
+        session = aiohttp.ClientSession(connector=connector)
+        return session
+
+    return via
+
+
 def via_tor():
     connector = ProxyConnector.from_url('socks5://127.0.0.1:9050')
     session = aiohttp.ClientSession(connector=connector)
@@ -72,7 +81,7 @@ def code250(mailProvider, target):
     mxRecord = str(mxRecord)
 
     try:
-        server = smtplib.SMTP()
+        server = smtplib.SMTP(timeout=10)
         server.set_debuglevel(0)
 
         server.connect(mxRecord)
@@ -1035,23 +1044,27 @@ async def runbox(target, req_session_fun) -> Dict:
 
     sreq = req_session_fun()
     for rboxdomain in runboxLst:
+        try:
+            data = {"type": "person", "company": "", "first_name": "", "last_name": "", "user": target,
+                    "userdomain": "domainyouown.com", "runboxDomain": rboxdomain, "password": "",
+                    "password_strength": "", "email_alternative": "", "phone_number_cellular": "",
+                    "referrer": "", "phone_number_home": "", "g-recaptcha-response": "",
+                    "h-captcha-response": "", "signup": "%A0Set+up+my+Runbox+account%A0",
+                    "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
+                    "account_number": "", "timezone": "undefined", "runbox7": "1"}
 
-        data = {"type": "person", "company": "", "first_name": "", "last_name": "", "user": target,
-                "userdomain": "domainyouown.com", "runboxDomain": rboxdomain, "password": "",
-                "password_strength": "", "email_alternative": "", "phone_number_cellular": "",
-                "referrer": "", "phone_number_home": "", "g-recaptcha-response": "",
-                "h-captcha-response": "", "signup": "%A0Set+up+my+Runbox+account%A0",
-                "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
-                "account_number": "", "timezone": "undefined", "runbox7": "1"}
+            chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=5)
 
-        chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=5)
+            if chkRunbox.status == 200:
+                resp = await chkRunbox.text()
+                if "The specified username is already taken" in resp:
+                    runboxSucc.append("{}@{}".format(target, rboxdomain))
 
-        if chkRunbox.status == 200:
-            resp = await chkRunbox.text()
-            if "The specified username is already taken" in resp:
-                runboxSucc.append("{}@{}".format(target, rboxdomain))
+        except Exception as e:
+            logger.error(e, exc_info=True)
 
-        sleep(random.uniform(1, 2.1))
+        finally:
+            sleep(random.uniform(1, 2.1))
 
     if runboxSucc:
         result["Runbox"] = runboxSucc
@@ -1073,19 +1086,22 @@ async def iCloud(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     for domain in domains:
-        email = f'{target}@{domain}'
-        headers = {
-            'User-Agent': random.choice(uaLst),
-            'sstt': 'zYEaY3WeI76oAG%2BCNPhCiGcKUCU0SIQ1cIO2EMepSo8egjarh4MvVPqxGOO20TYqlbJI%2Fqs57WwAoJarOPukJGJvgOF7I7C%2B1jAE5vZo%2FSmYkvi2e%2Bfxj1od1xJOf3lnUXZlrnL0QWpLfaOgOwjvorSMJ1iuUphB8bDqjRzyb76jzDU4hrm6TzkvxJdlPCCY3JVTfAZFgXRoW9VlD%2Bv3VF3in1RSf6Er2sOS12%2FZJR%2Buo9ubA2KH9RLRzPlr1ABtsRgw6r4zbFbORaKTSVWGDQPdYCaMsM4ebevyKj3aIxXa%2FOpS6SHcx1KrvtOAUVhR9nsfZsaYfZvDa6gzpcNBF9domZJ1p8MmThEfJra6LEuc9ssZ3aWn9uKqvT3pZIVIbgdZARL%2B6SK1YCN7',
-            'Content-Type': 'application/json',
-        }
+        try:
+            email = f'{target}@{domain}'
+            headers = {
+                'User-Agent': random.choice(uaLst),
+                'sstt': 'zYEaY3WeI76oAG%2BCNPhCiGcKUCU0SIQ1cIO2EMepSo8egjarh4MvVPqxGOO20TYqlbJI%2Fqs57WwAoJarOPukJGJvgOF7I7C%2B1jAE5vZo%2FSmYkvi2e%2Bfxj1od1xJOf3lnUXZlrnL0QWpLfaOgOwjvorSMJ1iuUphB8bDqjRzyb76jzDU4hrm6TzkvxJdlPCCY3JVTfAZFgXRoW9VlD%2Bv3VF3in1RSf6Er2sOS12%2FZJR%2Buo9ubA2KH9RLRzPlr1ABtsRgw6r4zbFbORaKTSVWGDQPdYCaMsM4ebevyKj3aIxXa%2FOpS6SHcx1KrvtOAUVhR9nsfZsaYfZvDa6gzpcNBF9domZJ1p8MmThEfJra6LEuc9ssZ3aWn9uKqvT3pZIVIbgdZARL%2B6SK1YCN7',
+                'Content-Type': 'application/json',
+            }
 
-        data = {'id': email}
-        check = await sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=5)
-        if check.headers and check.headers.get('Location', '').startswith('/password/authenticationmethod'):
-            if not result:
-                result = {'iCloud': []}
-            result['iCloud'].append(email)
+            data = {'id': email}
+            check = await sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=10)
+            if check.headers and check.headers.get('Location', '').startswith('/password/authenticationmethod'):
+                if not result:
+                    result = {'iCloud': []}
+                result['iCloud'].append(email)
+        except Exception as e:
+            logger.error(e, exc_info=True)
 
     await sreq.close()
 
@@ -1465,6 +1481,12 @@ if __name__ == '__main__':
         default=False,
         help="Use Tor where you need it",
     )
+    parser.add_argument(
+        '--proxy',
+        type=str,
+        default="",
+        help="Proxy string (e.g. https://user:pass@1.2.3.4:8080)",
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -1496,7 +1518,10 @@ if __name__ == '__main__':
     else:
         checkers = CHECKERS
 
-    if args.tor:
+    if args.proxy:
+        req_session_fun = via_proxy(args.proxy)
+        print(f'Using proxy {args.proxy} to make requests...')
+    elif args.tor:
         req_session_fun = via_tor
         print('Using tor to make requests...')
     else:
