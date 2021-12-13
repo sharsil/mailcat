@@ -7,7 +7,7 @@ import datetime
 import json
 import logging
 import random
-import smtplib
+import aiosmtplib
 import string as s
 import sys
 import threading
@@ -66,7 +66,7 @@ def simple_session():
     return aiohttp.ClientSession()
 
 
-def code250(mailProvider, target):
+async def code250(mailProvider, target):
     target = target
     providerLst = []
 
@@ -81,21 +81,23 @@ def code250(mailProvider, target):
     mxRecord = str(mxRecord)
 
     try:
-        server = smtplib.SMTP(timeout=10)
-        server.set_debuglevel(0)
+        server = aiosmtplib.esmtp.ESMTP(timeout=10)
+        # server.set_debuglevel(0)
 
-        server.connect(mxRecord)
-        server.helo(server.local_hostname)
-        server.mail(fromAddress)
-        code, message = server.rcpt(targetMail)
+        await server.connect(hostname=mxRecord)
+        await server.helo()
+        await server.mail(fromAddress)
+        code, message = await server.rcpt(targetMail)
 
         if code == 250:
             providerLst.append(targetMail)
 
-        message_str = message.decode().lower()
+        message_str = message.lower()
         if 'ban' in message_str or 'denied' in message_str:
             error = message_str
 
+    except aiosmtplib.errors.SMTPRecipientRefused:
+        pass
     except Exception as e:
         logger.error(e, exc_info=True)
         error = str(e)
@@ -105,7 +107,7 @@ def code250(mailProvider, target):
 
 async def gmail(target, req_session_fun) -> Dict:
     result = {}
-    gmailChkLst, error = code250("gmail.com", target)
+    gmailChkLst, error = await code250("gmail.com", target)
     if gmailChkLst:
         result["Google"] = gmailChkLst[0]
 
@@ -120,7 +122,7 @@ async def yandex(target, req_session_fun) -> Dict:
                     "yandex.ua",
                     "yandex.com",
                     "ya.ru"]
-    yaChkLst, error = code250("yandex.ru", target)
+    yaChkLst, error = await code250("yandex.ru", target)
     if yaChkLst:
         yaAliasesLst = ['{}@{}'.format(target, yaAlias) for yaAlias in yaAliasesLst]
         yaMails = list(set(yaChkLst + yaAliasesLst))
@@ -893,7 +895,7 @@ async def bigmir(target, req_session_fun) -> Dict:
 async def tutby(target, req_session_fun) -> Dict:  # Down
     result = {}
 
-    smtp_check, error = code250('tut.by', target)
+    smtp_check, error = await code250('tut.by', target)
     if smtp_check:
         result['Tut.by'] = smtp_check[0]
         return result
@@ -1362,7 +1364,7 @@ async def vivaldi(target, req_session_fun) -> Dict:
 
 async def mailDe(target, req_session_fun) -> Dict:
     result = {}
-    mailChkLst, error = code250("mail.de", target)
+    mailChkLst, error = await code250("mail.de", target)
     if mailChkLst:
         result["mail.de"] = mailChkLst[0]
     await asyncio.sleep(0)
