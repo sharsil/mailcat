@@ -1457,6 +1457,37 @@ async def intpl(target, req_session_fun) -> Dict:
 
     return result
 
+async def o2(target, req_session_fun) -> Dict:
+    result = {}
+
+    o2URL = "https://poczta.o2.pl/api/v1/public/registration/accounts/availability"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://poczta.o2.pl",
+        "Referer": "https://poczta.o2.pl/rejestracja/",
+        "Accept": "application/json"
+    }
+
+    data = f'{{"login":"{target}","sex":""}}'
+
+    sreq = req_session_fun()
+
+    try:
+        wpChk = await sreq.put(o2URL, headers=headers, data=data, timeout=5)
+
+        body = await wpChk.json(content_type=None)
+
+        if "Podany login jest niedostępny." in str(body):
+            result["O2"] = f"{target}@o2.pl"
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1514,7 +1545,8 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             bigmir, tutby, xmail, ukrnet,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
-            mailDe, wp, gazeta, intpl]  # -kolab -lycos(false((( )
+            mailDe, wp, gazeta, intpl,
+            o2]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
