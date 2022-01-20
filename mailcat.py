@@ -1368,6 +1368,126 @@ async def mailDe(target, req_session_fun) -> Dict:
     await asyncio.sleep(0)
     return result, error
 
+async def wp(target, req_session_fun) -> Dict:
+    result = {}
+
+    wpURL = "https://poczta.wp.pl/api/v1/public/registration/accounts/availability"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://poczta.wp.pl",
+        "Referer": "https://poczta.wp.pl/rejestracja/",
+        "Accept": "application/json"
+    }
+
+    data = f'{{"login":"{target}"}}'
+
+    sreq = req_session_fun()
+
+    try:
+        wpChk = await sreq.put(wpURL, headers=headers, data=data, timeout=5)
+
+        body = await wpChk.json(content_type=None)
+
+        if "Podany login jest niedostępny." in str(body):
+            result["Wirtualna Polska"] = f"{target}@wp.pl"
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
+async def gazeta(target, req_session_fun) -> Dict:
+    result = {}
+
+    gazetaURL = f"https://konto.gazeta.pl/konto/checkLogin?login={target}&nosuggestions=true"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Referer": "https://konto.gazeta.pl/konto/rejestracja.do",
+        "Accept": "*/*"
+    }
+
+    sreq = req_session_fun()
+
+    try:
+        gazetaChk = await sreq.get(gazetaURL, headers=headers, timeout=5)
+
+        body = await gazetaChk.json(content_type=None)
+
+        if body["available"] == "0":
+            result["Gazeta.pl"] = f"{target}@gazeta.pl"
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
+async def intpl(target, req_session_fun) -> Dict:
+    result = {}
+
+    intURL = f"https://int.pl/v1/user/checkEmail"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Origin": "https://int.pl",
+        "Referer": "https://int.pl/",
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+    }
+
+    data = f"login={target}&subdomain=&domain=int.pl"
+
+    sreq = req_session_fun()
+
+    try:
+        intChk = await sreq.post(intURL, headers=headers, data=data, timeout=5)
+
+        body = await intChk.json(content_type=None)
+
+        if body["result"]["data"]["login"] == 0:
+            result["int.pl"] = f"{target}@int.pl"
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
+async def o2(target, req_session_fun) -> Dict:
+    result = {}
+
+    o2URL = "https://poczta.o2.pl/api/v1/public/registration/accounts/availability"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://poczta.o2.pl",
+        "Referer": "https://poczta.o2.pl/rejestracja/",
+        "Accept": "application/json"
+    }
+
+    data = f'{{"login":"{target}","sex":""}}'
+
+    sreq = req_session_fun()
+
+    try:
+        wpChk = await sreq.put(o2URL, headers=headers, data=data, timeout=5)
+
+        body = await wpChk.json(content_type=None)
+
+        if "Podany login jest niedostępny." in str(body):
+            result["O2"] = f"{target}@o2.pl"
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1425,7 +1545,8 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             bigmir, tutby, xmail, ukrnet,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
-            mailDe]  # -kolab -lycos(false((( )
+            mailDe, wp, gazeta, intpl,
+            o2]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

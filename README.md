@@ -28,7 +28,7 @@ Examples:
 
 ## Supported providers
 
-Total 26 providers, > 60 domains and > 100 aliases.
+Total 34 providers, > 60 domains and > 100 aliases.
 
 | Name                | Domains                                | Method            |
 | ------------------- | -------------------------------------- | ----------------- |
@@ -62,6 +62,10 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | aikq                | aikq.de + 40 other domains             | Registration      |
 | Vivaldi             | vivaldi.net                            | Registration      |
 | mailDe              | mail.de                                | SMTP              |
+| Wirtualna Polska    | wp.pl                                  | Registration      |
+| Gazeta.pl           | gazeta.pl                              | Registration      |
+| int.pl              | int.pl                                 | Registration      |
+| O2                  | o2.pl                                  | Registration      |
 
 ## Mentions and articles
 
