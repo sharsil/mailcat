@@ -1426,6 +1426,37 @@ async def gazeta(target, req_session_fun) -> Dict:
 
     return result
 
+async def intpl(target, req_session_fun) -> Dict:
+    result = {}
+
+    intURL = f"https://int.pl/v1/user/checkEmail"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Origin": "https://int.pl",
+        "Referer": "https://int.pl/",
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+    }
+
+    data = f"login={target}&subdomain=&domain=int.pl"
+
+    sreq = req_session_fun()
+
+    try:
+        intChk = await sreq.post(intURL, headers=headers, data=data, timeout=5)
+
+        body = await intChk.json(content_type=None)
+
+        if body["result"]["data"]["login"] == 0:
+            result["int.pl"] = f"{target}@int.pl"
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1483,7 +1514,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             bigmir, tutby, xmail, ukrnet,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
-            mailDe, wp, gazeta]  # -kolab -lycos(false((( )
+            mailDe, wp, gazeta, intpl]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

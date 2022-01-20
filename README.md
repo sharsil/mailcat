@@ -64,6 +64,7 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | mailDe              | mail.de                                | SMTP              |
 | Wirtualna Polska    | wp.pl                                  | Registration      |
 | Gazeta.pl           | gazeta.pl                              | Registration      |
+| int.pl              | int.pl                                 | Registration      |
 
 ## Mentions and articles
 
