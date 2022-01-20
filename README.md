@@ -62,6 +62,8 @@ Total 26 providers, > 60 domains and > 100 aliases.
 | aikq                | aikq.de + 40 other domains             | Registration      |
 | Vivaldi             | vivaldi.net                            | Registration      |
 | mailDe              | mail.de                                | SMTP              |
+| Wirtualna Polska    | wp.pl                                  | Registration      |
+| Gazeta.pl           | gazeta.pl                              | Registration      |
 
 ## Mentions and articles
 
