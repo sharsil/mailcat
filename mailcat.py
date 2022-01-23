@@ -1488,6 +1488,59 @@ async def o2(target, req_session_fun) -> Dict:
 
     return result
 
+async def interia(target, req_session_fun) -> Dict:
+    result = {}
+    interiaSucc = []
+
+    interiaLst = ["interia.pl",
+               "interia.eu",
+               "intmail.pl",
+               "adresik.net",
+               "vip.interia.pl",
+               "ogarnij.se",
+               "poczta.fm",
+               "interia.com",
+               "interiowy.pl",
+               "pisz.to",
+               "pacz.to"]
+
+
+    headers = {
+        'User-Agent': random.choice(uaLst),
+        'Content-Type': 'application/json',
+        'Accept': 'application/json; q=1.0, text/*; q=0.8, */*; q=0.1',
+        'Origin': 'https://konto-pocztowe.interia.pl',
+        'Referer': 'https://konto-pocztowe.interia.pl/'
+    }
+
+    sreq = req_session_fun()
+
+    for maildomain in interiaLst:
+        try:
+            targetMail = f"{target}@{maildomain}"
+            data = f'{{"email":"{targetMail}"}}'
+
+            interiaUrl = "https://konto-pocztowe.interia.pl/odzyskiwanie-dostepu/sms"
+            chkInteria = await sreq.post(interiaUrl, headers=headers, data=data, timeout=5)
+
+            async with chkInteria:
+                resp = await chkInteria.json(content_type=None)
+                if chkInteria.status == 404:
+                    resp = await chkInteria.json(content_type=None)
+                    if resp["data"]["message"] == "Użytkownik nie istnieje w systemie":
+                        interiaSucc.append(targetMail)
+        except Exception as e:
+            logger.error(e, exc_info=True)
+
+        sleep(random.uniform(2, 4))
+
+    if interiaSucc:
+        result["Interia"] = interiaSucc
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1546,7 +1599,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
-            o2]  # -kolab -lycos(false((( )
+            o2, interia]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
