@@ -28,7 +28,7 @@ Examples:
 
 ## Supported providers
 
-Total 34 providers, > 60 domains and > 100 aliases.
+Total 35 providers, > 60 domains and > 100 aliases.
 
 | Name                | Domains                                | Method            |
 | ------------------- | -------------------------------------- | ----------------- |
