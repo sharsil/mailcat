@@ -28,7 +28,7 @@ Examples:
 
 ## Supported providers
 
-Total 34 providers, > 60 domains and > 100 aliases.
+Total 35 providers, > 60 domains and > 100 aliases.
 
 | Name                | Domains                                | Method            |
 | ------------------- | -------------------------------------- | ----------------- |
@@ -66,6 +66,7 @@ Total 34 providers, > 60 domains and > 100 aliases.
 | Gazeta.pl           | gazeta.pl                              | Registration      |
 | int.pl              | int.pl                                 | Registration      |
 | O2                  | o2.pl                                  | Registration      |
+| Interia             | interia.pl + 10 other domains          | Password recovery |
 
 ## Mentions and articles
 
