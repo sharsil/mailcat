@@ -1524,7 +1524,6 @@ async def interia(target, req_session_fun) -> Dict:
             chkInteria = await sreq.post(interiaUrl, headers=headers, data=data, timeout=5)
 
             async with chkInteria:
-                resp = await chkInteria.json(content_type=None)
                 if chkInteria.status == 404:
                     resp = await chkInteria.json(content_type=None)
                     if resp["data"]["message"] == "Użytkownik nie istnieje w systemie":
