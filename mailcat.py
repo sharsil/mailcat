@@ -1144,6 +1144,13 @@ async def duckgo(target, req_session_fun) -> Dict:
 async def ctemplar(target, req_session_fun) -> Dict:
 
     result = {}
+
+    # validate target syntax to prevent false positive results (e.g. no dot at the end of target allowed)
+    match = re.search(r'^[a-zA-Z][\w\-.]{2,}[a-zA-Z\d]$', target)
+
+    if not match:
+        return result
+
     sreq = req_session_fun()
 
     ctURL = "https://api.ctemplar.com/auth/check-username/"
