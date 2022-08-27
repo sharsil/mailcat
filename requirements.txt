@@ -1,3 +1,4 @@
 requests_html
 dnspython
 aiohttp_socks
+aiosmtplib
