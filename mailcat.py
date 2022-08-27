@@ -626,7 +626,7 @@ async def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia
     target = target.lower()
 
     # validate target syntax to prevent false positive results
-    match = re.search(r'^\w{3,40}$', target)
+    match = re.search(r'^[a-zA-Z]\w{2,40}$', target, re.ASCII)
 
     if not match:
         return result
