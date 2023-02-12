@@ -1557,6 +1557,45 @@ async def interia(target, req_session_fun) -> Dict:
 
     return result
 
+async def tpl(target, req_session_fun) -> Dict:
+    result = {}
+    tplSucc = []
+
+    tplLst = ["t.pl",
+               "malio.pl",
+               "wg.pl",
+               "2.pl",
+               "jo.pl",
+               "pocz.pl",
+               "t7.pl",
+               "0.pl",
+               "uk.pl"]
+
+
+    headers = {'User-Agent': random.choice(uaLst)}
+    sreq = req_session_fun()
+    try:
+        tplUrl = f"https://t.pl/reg.php?nazwa={target}"
+
+        chkTpl = await sreq.get(tplUrl, headers=headers, timeout=5)
+
+        async with chkTpl:
+            if chkTpl.status == 200:
+                resp = await chkTpl.text()
+                for maildomain in tplLst:
+                    targetMail = f"{target}@{maildomain}"
+                    if f"<td>{targetMail}</td><td class=zajety>" in resp:
+                        tplSucc.append(targetMail)
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    if tplSucc:
+        result["T.pl"] = tplSucc
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1615,7 +1654,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
-            o2, interia]  # -kolab -lycos(false((( )
+            o2, interia, tpl]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
