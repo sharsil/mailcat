@@ -1640,11 +1640,11 @@ async def onet(target, req_session_fun) -> Dict:
         async with chkOnet:
             if chkOnet.status == 200:
                 body = await chkOnet.json(content_type=None)
-                if len(body['emails']) != 0:
-                    for maildomain in onetLst:
-                        targetMail = f"{target}@{maildomain}"
-                        if not targetMail in body["emails"]:
-                            onetSucc.append(targetMail) 
+
+                for maildomain in onetLst:
+                    targetMail = f"{target}@{maildomain}"
+                    if not targetMail in body["emails"]:
+                        onetSucc.append(targetMail) 
 
     except Exception as e:
         logger.error(e, exc_info=True)
