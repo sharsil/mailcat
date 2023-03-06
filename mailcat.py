@@ -80,7 +80,7 @@ async def code250(mailProvider, target):
     mxRecord = str(mxRecord)
 
     try:
-        server = aiosmtplib.esmtp.ESMTP(timeout=10)
+        server = aiosmtplib.SMTP(timeout=10, validate_certs=False)
         # server.set_debuglevel(0)
 
         await server.connect(hostname=mxRecord)
