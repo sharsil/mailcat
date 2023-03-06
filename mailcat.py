@@ -134,19 +134,18 @@ async def yandex(target, req_session_fun) -> Dict:
 async def proton(target, req_session_fun) -> Dict:
     result = {}
 
-    protonLst = ["protonmail.com", "protonmail.ch", "pm.me"]
+    protonLst = ["protonmail.com", "protonmail.ch", "pm.me", "proton.me"]
     protonSucc = []
     sreq = req_session_fun()
 
-    protonURL = f"https://mail.protonmail.com/api/users/available?Name={target}"
+    protonURL = f"https://account.proton.me/api/core/v4/users/available?Name={target}"
 
     headers = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
                 "Accept": "application/vnd.protonmail.v1+json",
                 "Accept-Language": "en-US,en;q=0.5",
                 "Accept-Encoding": "gzip, deflate",
                 "Referer": "https://mail.protonmail.com/create/new?language=en",
-                "x-pm-appversion": "Web_3.16.19",
-                "x-pm-apiversion": "3",
+                "x-pm-appversion": "web-account@5.0.18.4",
                 "Cache-Control": "no-cache",
                 "Pragma": "no-cache",
                 "DNT": "1", "Connection": "close"}
