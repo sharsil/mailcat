@@ -1595,6 +1595,66 @@ async def tpl(target, req_session_fun) -> Dict:
 
     return result
 
+async def onet(target, req_session_fun) -> Dict:
+    result = {}
+    onetSucc = []
+
+    onetLst = ["onet.pl",
+                "op.pl",
+                "adres.pl",
+                "vp.pl",
+                "onet.eu",
+                "cyberia.pl",
+                "pseudonim.pl",
+                "autograf.pl",
+                "opoczta.pl",
+                "spoko.pl",
+                "amorki.pl",
+                "buziaczek.pl",
+                "poczta.onet.pl",
+                "poczta.onet.eu",
+                "onet.com.pl",
+                "vip.onet.pl"]
+
+
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Referer": "https://konto.onet.pl/"
+        }
+
+    data = {
+        "login": target,
+        "captcha_response":"meow",
+        "state":"https://poczta.onet.pl/"
+        }
+
+    onetUrl = "https://konto.onet.pl/newapi/oauth/check-register-email-identity"
+
+    sreq = req_session_fun()
+    try:
+        chkOnet = await sreq.post(onetUrl, headers=headers, data=json.dumps(data), timeout=5)
+
+        async with chkOnet:
+            if chkOnet.status == 200:
+                body = await chkOnet.json(content_type=None)
+
+                for maildomain in onetLst:
+                    targetMail = f"{target}@{maildomain}"
+                    if not targetMail in body["emails"]:
+                        onetSucc.append(targetMail) 
+
+    except Exception as e:
+        logger.error(e, exc_info=True)
+
+    if onetSucc:
+        result["Onet"] = onetSucc
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1653,7 +1713,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
-            o2, interia, tpl]  # -kolab -lycos(false((( )
+            o2, interia, tpl, onet]  # -kolab -lycos(false((( )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
