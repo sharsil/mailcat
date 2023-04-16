@@ -10,13 +10,15 @@ import random
 import aiosmtplib
 import string as s
 import sys
+import time
 import threading
 import re
 from time import sleep
-from typing import Dict, List
+from typing import Iterable, Dict, List, Callable, Tuple, Any
 
 import dns.resolver
 
+import tqdm
 from requests_html import AsyncHTMLSession  # type: ignore
 from aiohttp_socks import ProxyConnector
 
@@ -33,18 +35,121 @@ uaLst = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
 ]
 
+logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 logging.basicConfig(format='%(message)s')
 logger = logging.getLogger('mailcat')
 logger.setLevel(100)
+
+QueryDraft = Tuple[Callable, List, Dict]
+
+
+class stub_progress:
+    def __init__(self, total):
+        pass
+
+    def update(self, *args, **kwargs):
+        pass
+
+    def close(self, *args, **kwargs):
+        pass
+
+def create_task_func():
+    if sys.version_info.minor > 6:
+        create_asyncio_task = asyncio.create_task
+    else:
+        loop = asyncio.get_event_loop()
+        create_asyncio_task = loop.create_task
+    return create_asyncio_task
+
+
+class AsyncExecutor:
+    def __init__(self, *args, **kwargs):
+        self.logger = kwargs['logger']
+
+    async def run(self, tasks: Iterable[QueryDraft]):
+        start_time = time.time()
+        results = await self._run(tasks)
+        self.execution_time = time.time() - start_time
+        self.logger.debug(f'Spent time: {self.execution_time}')
+        return results
+
+    async def _run(self, tasks: Iterable[QueryDraft]):
+        await asyncio.sleep(0)
+
+
+class AsyncioProgressbarQueueExecutor(AsyncExecutor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.workers_count = kwargs.get('in_parallel', 10)
+        self.progress_func = kwargs.get('progress_func', tqdm.tqdm)
+        self.queue = asyncio.Queue(self.workers_count)
+        self.timeout = kwargs.get('timeout')
+
+    async def increment_progress(self, count):
+        update_func = self.progress.update
+        if asyncio.iscoroutinefunction(update_func):
+            await update_func(count)
+        else:
+            update_func(count)
+        await asyncio.sleep(0)
+
+    async def stop_progress(self):
+        stop_func = self.progress.close
+        if asyncio.iscoroutinefunction(stop_func):
+            await stop_func()
+        else:
+            stop_func()
+        await asyncio.sleep(0)
+
+    async def worker(self):
+        while True:
+            try:
+                f, args, kwargs = self.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+
+            query_future = f(*args, **kwargs)
+            query_task = create_task_func()(query_future)
+            try:
+                result = await asyncio.wait_for(query_task, timeout=self.timeout)
+            except asyncio.TimeoutError:
+                result = kwargs.get('default')
+
+            self.results.append(result)
+            await self.increment_progress(1)
+            self.queue.task_done()
+
+    async def _run(self, queries: Iterable[QueryDraft]):
+        self.results: List[Any] = []
+
+        queries_list = list(queries)
+
+        min_workers = min(len(queries_list), self.workers_count)
+
+        workers = [create_task_func()(self.worker()) for _ in range(min_workers)]
+
+        self.progress = self.progress_func(total=len(queries_list))
+
+        for t in queries_list:
+            await self.queue.put(t)
+
+        await self.queue.join()
+
+        for w in workers:
+            w.cancel()
+
+        await self.stop_progress()
+        return self.results
+
 
 def randstr(num):
     return ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), num))
 
 
-def sleeper(sList, s_min, s_max):
+async def sleeper(sList, s_min, s_max):
     for ind in sList:
         if sList.index(ind) < (len(sList) - 1):
-            sleep(random.uniform(s_min, s_max))
+            await asyncio.sleep(random.uniform(s_min, s_max))
 
 
 def via_proxy(proxy_str):
@@ -197,7 +302,7 @@ async def mailRu(target, req_session_fun, *args, **kwargs) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(0.5, 2))
+        await asyncio.sleep(random.uniform(0.5, 2))
 
     if mailRuSucc:
         result["MailRU"] = mailRuSucc
@@ -251,7 +356,7 @@ async def rambler(target, req_session_fun, *args, **kwargs) -> Dict:  # basn ris
                     except KeyError as e:
                         logger.error(e, exc_info=True)
 
-            sleep(random.uniform(4, 6))  # don't reduce
+            await asyncio.sleep(random.uniform(4, 6))  # don't reduce
 
         except Exception as e:
             logger.error(e, exc_info=True)
@@ -296,7 +401,7 @@ async def tuta(target, req_session_fun, *args, **kwargs) -> Dict:
                     if exists == "0":
                         tutaSucc.append(targetMail)
 
-            sleep(random.uniform(2, 4))
+            await asyncio.sleep(random.uniform(2, 4))
 
         except Exception as e:
             logger.error(e, exc_info=True)
@@ -464,7 +569,7 @@ async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:  # high ban
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if eclipsoSucc:
         result["Eclipso"] = eclipsoSucc
@@ -612,7 +717,7 @@ async def firemail(target, req_session_fun, *args, **kwargs) -> Dict:  # tor RU
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if firemailSucc:
         result["Firemail"] = firemailSucc
@@ -699,7 +804,7 @@ async def fastmail(target, req_session_fun, *args, **kwargs) -> Dict:  # sanctio
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(0.5, 1.1))
+        await asyncio.sleep(random.uniform(0.5, 1.1))
 
     if fastmailSucc:
         result["Fastmail"] = fastmailSucc
@@ -884,7 +989,7 @@ async def bigmir(target, req_session_fun, *args, **kwargs) -> Dict:
                     if "'free': false" in resp:
                         bigmirSucc.append(f"{target}@{maildomain}")
 
-            sleep(random.uniform(2, 4))
+            await asyncio.sleep(random.uniform(2, 4))
 
         except Exception as e:
             logger.error(e, exc_info=True)
@@ -1071,7 +1176,7 @@ async def runbox(target, req_session_fun, *args, **kwargs) -> Dict:
             logger.error(e, exc_info=True)
 
         finally:
-            sleep(random.uniform(1, 2.1))
+            await asyncio.sleep(random.uniform(1, 2.1))
 
     if runboxSucc:
         result["Runbox"] = runboxSucc
@@ -1244,7 +1349,7 @@ async def hushmail(target, req_session_fun, *args, **kwargs) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleeper(hushDomains, 1.1, 2.2)
+        await sleeper(hushDomains, 1.1, 2.2)
 
     if hushSucc:
         result["HushMail"] = hushSucc
@@ -1343,7 +1448,7 @@ async def aikq(target, req_session_fun, *args, **kwargs) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if aikqSucc:
         result["Aikq"] = aikqSucc
@@ -1554,7 +1659,7 @@ async def interia(target, req_session_fun, *args, **kwargs) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if interiaSucc:
         result["Interia"] = interiaSucc
@@ -1702,7 +1807,7 @@ async def print_results(checker, target, req_session_fun, is_verbose_mode, timeo
 
     if err:
         print(f'Error while checking {checker_name}: {err}')
-        return
+        return {checker_name: err}
 
     for provider, emails in res.items():
         print(f'\033[1;38;5;75m{provider}: \033[0m')
@@ -1711,12 +1816,14 @@ async def print_results(checker, target, req_session_fun, is_verbose_mode, timeo
         for email in emails:
             print(f'*  {email}')
 
+    return {checker_name: res} if res else {checker_name: None}
+
 
 CHECKERS = [gmail, yandex, proton, mailRu,
             rambler, tuta, yahoo, outlook,
             zoho, eclipso, posteo, mailbox,
             firemail, fastmail, startmail,
-            bigmir, tutby, xmail, ukrnet,
+            tutby, xmail, ukrnet, #bigmir,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
@@ -1787,7 +1894,14 @@ if __name__ == '__main__':
         '--timeout',
         type=int,
         default=10,
-        help="Timeout for evenry check (10 seconds by default)",
+        help="Timeout for every check, 10 seconds by default",
+    )
+    parser.add_argument(
+        '-m',
+        '--max-connections',
+        type=int,
+        default=10,
+        help="Max connections to check (number of simultaneously checked providers), 10 by default",
     )
     args = parser.parse_args()
 
@@ -1829,6 +1943,22 @@ if __name__ == '__main__':
     else:
         req_session_fun = simple_session
 
-    jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose, args.timeout) for checker in checkers])
+    # jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose, args.timeout) for checker in checkers])
+    # asyncio.get_event_loop().run_until_complete(jobs)
 
-    asyncio.get_event_loop().run_until_complete(jobs)
+    tasks = [(
+        print_results,
+        [checker, target, req_session_fun, args.verbose, args.timeout],
+        {},
+    ) for checker in checkers]
+
+    executor = AsyncioProgressbarQueueExecutor(
+        logger=logger,
+        in_parallel=args.max_connections,
+        timeout=args.timeout + 0.5,
+        progress_func=stub_progress,
+    )
+
+    results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
+
+    # print(results)
