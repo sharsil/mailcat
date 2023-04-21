@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import aiohttp
 import asyncio
 import argparse
@@ -10,13 +10,15 @@ import random
 import aiosmtplib
 import string as s
 import sys
+import time
 import threading
 import re
 from time import sleep
-from typing import Dict, List
+from typing import Iterable, Dict, List, Callable, Tuple, Any
 
 import dns.resolver
 
+import tqdm
 from requests_html import AsyncHTMLSession  # type: ignore
 from aiohttp_socks import ProxyConnector
 
@@ -33,18 +35,121 @@ uaLst = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
 ]
 
+logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 logging.basicConfig(format='%(message)s')
 logger = logging.getLogger('mailcat')
 logger.setLevel(100)
+
+QueryDraft = Tuple[Callable, List, Dict]
+
+
+class stub_progress:
+    def __init__(self, total):
+        pass
+
+    def update(self, *args, **kwargs):
+        pass
+
+    def close(self, *args, **kwargs):
+        pass
+
+def create_task_func():
+    if sys.version_info.minor > 6:
+        create_asyncio_task = asyncio.create_task
+    else:
+        loop = asyncio.get_event_loop()
+        create_asyncio_task = loop.create_task
+    return create_asyncio_task
+
+
+class AsyncExecutor:
+    def __init__(self, *args, **kwargs):
+        self.logger = kwargs['logger']
+
+    async def run(self, tasks: Iterable[QueryDraft]):
+        start_time = time.time()
+        results = await self._run(tasks)
+        self.execution_time = time.time() - start_time
+        self.logger.debug(f'Spent time: {self.execution_time}')
+        return results
+
+    async def _run(self, tasks: Iterable[QueryDraft]):
+        await asyncio.sleep(0)
+
+
+class AsyncioProgressbarQueueExecutor(AsyncExecutor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.workers_count = kwargs.get('in_parallel', 10)
+        self.progress_func = kwargs.get('progress_func', tqdm.tqdm)
+        self.queue = asyncio.Queue(self.workers_count)
+        self.timeout = kwargs.get('timeout')
+
+    async def increment_progress(self, count):
+        update_func = self.progress.update
+        if asyncio.iscoroutinefunction(update_func):
+            await update_func(count)
+        else:
+            update_func(count)
+        await asyncio.sleep(0)
+
+    async def stop_progress(self):
+        stop_func = self.progress.close
+        if asyncio.iscoroutinefunction(stop_func):
+            await stop_func()
+        else:
+            stop_func()
+        await asyncio.sleep(0)
+
+    async def worker(self):
+        while True:
+            try:
+                f, args, kwargs = self.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+
+            query_future = f(*args, **kwargs)
+            query_task = create_task_func()(query_future)
+            try:
+                result = await asyncio.wait_for(query_task, timeout=self.timeout)
+            except asyncio.TimeoutError:
+                result = kwargs.get('default')
+
+            self.results.append(result)
+            await self.increment_progress(1)
+            self.queue.task_done()
+
+    async def _run(self, queries: Iterable[QueryDraft]):
+        self.results: List[Any] = []
+
+        queries_list = list(queries)
+
+        min_workers = min(len(queries_list), self.workers_count)
+
+        workers = [create_task_func()(self.worker()) for _ in range(min_workers)]
+
+        self.progress = self.progress_func(total=len(queries_list))
+
+        for t in queries_list:
+            await self.queue.put(t)
+
+        await self.queue.join()
+
+        for w in workers:
+            w.cancel()
+
+        await self.stop_progress()
+        return self.results
+
 
 def randstr(num):
     return ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), num))
 
 
-def sleeper(sList, s_min, s_max):
+async def sleeper(sList, s_min, s_max):
     for ind in sList:
         if sList.index(ind) < (len(sList) - 1):
-            sleep(random.uniform(s_min, s_max))
+            await asyncio.sleep(random.uniform(s_min, s_max))
 
 
 def via_proxy(proxy_str):
@@ -65,7 +170,7 @@ def simple_session():
     return aiohttp.ClientSession()
 
 
-async def code250(mailProvider, target):
+async def code250(mailProvider, target, timeout=10):
     target = target
     providerLst = []
 
@@ -80,7 +185,7 @@ async def code250(mailProvider, target):
     mxRecord = str(mxRecord)
 
     try:
-        server = aiosmtplib.SMTP(timeout=10, validate_certs=False)
+        server = aiosmtplib.SMTP(timeout=timeout, validate_certs=False)
         # server.set_debuglevel(0)
 
         await server.connect(hostname=mxRecord)
@@ -104,9 +209,9 @@ async def code250(mailProvider, target):
     return providerLst, error
 
 
-async def gmail(target, req_session_fun) -> Dict:
+async def gmail(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
-    gmailChkLst, error = await code250("gmail.com", target)
+    gmailChkLst, error = await code250("gmail.com", target, kwargs.get('timeout', 10))
     if gmailChkLst:
         result["Google"] = gmailChkLst[0]
 
@@ -114,14 +219,14 @@ async def gmail(target, req_session_fun) -> Dict:
     return result, error
 
 
-async def yandex(target, req_session_fun) -> Dict:
+async def yandex(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     yaAliasesLst = ["yandex.by",
                     "yandex.kz",
                     "yandex.ua",
                     "yandex.com",
                     "ya.ru"]
-    yaChkLst, error = await code250("yandex.ru", target)
+    yaChkLst, error = await code250("yandex.ru", target, kwargs.get('timeout', 10))
     if yaChkLst:
         yaAliasesLst = [f'{target}@{yaAlias}' for yaAlias in yaAliasesLst]
         yaMails = list(set(yaChkLst + yaAliasesLst))
@@ -131,7 +236,7 @@ async def yandex(target, req_session_fun) -> Dict:
     return result, error
 
 
-async def proton(target, req_session_fun) -> Dict:
+async def proton(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     protonLst = ["protonmail.com", "protonmail.ch", "pm.me", "proton.me"]
@@ -152,7 +257,7 @@ async def proton(target, req_session_fun) -> Dict:
 
     try:
 
-        chkProton = await sreq.get(protonURL, headers=headers, timeout=3)
+        chkProton = await sreq.get(protonURL, headers=headers, timeout=kwargs.get('timeout', 5))
 
         async with chkProton:
             if chkProton.status == 409:
@@ -172,7 +277,7 @@ async def proton(target, req_session_fun) -> Dict:
     return result
 
 
-async def mailRu(target, req_session_fun) -> Dict:
+async def mailRu(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     # headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0', 'Referer': 'https://account.mail.ru/signup?from=main&rf=auth.mail.ru'}
@@ -197,7 +302,7 @@ async def mailRu(target, req_session_fun) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(0.5, 2))
+        await asyncio.sleep(random.uniform(0.5, 2))
 
     if mailRuSucc:
         result["MailRU"] = mailRuSucc
@@ -207,7 +312,7 @@ async def mailRu(target, req_session_fun) -> Dict:
     return result
 
 
-async def rambler(target, req_session_fun) -> Dict:  # basn risk
+async def rambler(target, req_session_fun, *args, **kwargs) -> Dict:  # basn risk
     result = {}
 
     ramblerMail = ["rambler.ru", "lenta.ru", "autorambler.ru", "myrambler.ru", "ro.ru", "rambler.ua"]
@@ -251,7 +356,7 @@ async def rambler(target, req_session_fun) -> Dict:  # basn risk
                     except KeyError as e:
                         logger.error(e, exc_info=True)
 
-            sleep(random.uniform(4, 6))  # don't reduce
+            await asyncio.sleep(random.uniform(4, 6))  # don't reduce
 
         except Exception as e:
             logger.error(e, exc_info=True)
@@ -264,7 +369,7 @@ async def rambler(target, req_session_fun) -> Dict:  # basn risk
     return result
 
 
-async def tuta(target, req_session_fun) -> Dict:
+async def tuta(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     headers = {
@@ -284,7 +389,7 @@ async def tuta(target, req_session_fun) -> Dict:
             tutaCheck = await sreq.get(
                 f'{tutaURL}%7B%22_format%22%3A%220%22%2C%22mailAddress%22%3A%22{target}%40{maildomain}%22%7D',
                 headers=headers,
-                timeout=5,
+                timeout=kwargs.get('timeout', 5),
             )
 
 
@@ -296,7 +401,7 @@ async def tuta(target, req_session_fun) -> Dict:
                     if exists == "0":
                         tutaSucc.append(targetMail)
 
-            sleep(random.uniform(2, 4))
+            await asyncio.sleep(random.uniform(2, 4))
 
         except Exception as e:
             logger.error(e, exc_info=True)
@@ -309,7 +414,7 @@ async def tuta(target, req_session_fun) -> Dict:
     return result
 
 
-async def yahoo(target, req_session_fun) -> Dict:
+async def yahoo(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     yahooURL = "https://login.yahoo.com:443/account/module/create?validateField=yid"
@@ -326,7 +431,7 @@ async def yahoo(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        yahooChk = await sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=5)
+        yahooChk = await sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=kwargs.get('timeout', 5))
 
         body = await yahooChk.text()
         if '"IDENTIFIER_EXISTS"' in body:
@@ -340,7 +445,7 @@ async def yahoo(target, req_session_fun) -> Dict:
     return result
 
 
-async def outlook(target, req_session_fun) -> Dict:
+async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     liveSucc = []
     sreq = AsyncHTMLSession(loop=asyncio.get_event_loop())
@@ -367,7 +472,7 @@ async def outlook(target, req_session_fun) -> Dict:
     return result
 
 
-async def zoho(target, req_session_fun) -> Dict:
+async def zoho(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     headers = {
@@ -381,7 +486,7 @@ async def zoho(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        zohoChk = await sreq.post(zohoURL, headers=headers, data=zohoPOST, timeout=10)
+        zohoChk = await sreq.post(zohoURL, headers=headers, data=zohoPOST, timeout=kwargs.get('timeout', 10))
 
         async with zohoChk:
             if zohoChk.status == 200:
@@ -399,7 +504,7 @@ async def zoho(target, req_session_fun) -> Dict:
     return result
 
 
-async def lycos(target, req_session_fun) -> Dict:
+async def lycos(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     lycosURL = f"https://registration.lycos.com/usernameassistant.php?validate=1&m_AID=0&t=1625674151843&m_U={target}&m_PR=27&m_SESSIONKEY=4kCL5VaODOZ5M5lBF2lgVONl7tveoX8RKmedGRU3XjV3xRX5MqCP2NWHKynX4YL4"
@@ -412,7 +517,7 @@ async def lycos(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        lycosChk = await sreq.get(lycosURL, headers=headers, timeout=10)
+        lycosChk = await sreq.get(lycosURL, headers=headers, timeout=kwargs.get('timeout', 10))
 
         async with lycosChk:
             if lycosChk.status == 200:
@@ -427,7 +532,7 @@ async def lycos(target, req_session_fun) -> Dict:
     return result
 
 
-async def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false positives after
+async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:  # high ban risk + false positives after
     result = {}
 
     eclipsoSucc = []
@@ -454,7 +559,7 @@ async def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false pos
 
             eclipsoURL = f"https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={targetMail}"
 
-            chkEclipso = await sreq.get(eclipsoURL, headers=headers, timeout=5)
+            chkEclipso = await sreq.get(eclipsoURL, headers=headers, timeout=kwargs.get('timeout', 5))
 
             async with chkEclipso:
                 if chkEclipso.status == 200:
@@ -464,7 +569,7 @@ async def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false pos
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if eclipsoSucc:
         result["Eclipso"] = eclipsoSucc
@@ -474,7 +579,7 @@ async def eclipso(target, req_session_fun) -> Dict:  # high ban risk + false pos
     return result
 
 
-async def posteo(target, req_session_fun) -> Dict:
+async def posteo(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     posteoLst = [
@@ -539,7 +644,7 @@ async def posteo(target, req_session_fun) -> Dict:
     try:
         posteoURL = f"https://posteo.de/users/new/check_username?user%5Busername%5D={target}"
 
-        chkPosteo = await sreq.get(posteoURL, headers=headers, timeout=5)
+        chkPosteo = await sreq.get(posteoURL, headers=headers, timeout=kwargs.get('timeout', 5))
 
         async with chkPosteo:
             if chkPosteo.status == 200:
@@ -558,7 +663,7 @@ async def posteo(target, req_session_fun) -> Dict:
     return result
 
 
-async def mailbox(target, req_session_fun) -> Dict:  # tor RU
+async def mailbox(target, req_session_fun, *args, **kwargs) -> Dict:  # tor RU
     result = {}
 
     mailboxURL = "https://register.mailbox.org:443/ajax"
@@ -570,7 +675,7 @@ async def mailbox(target, req_session_fun) -> Dict:  # tor RU
     sreq = req_session_fun()
 
     try:
-        chkMailbox = await sreq.post(mailboxURL, headers=headers, json=mailboxJSON, timeout=10)
+        chkMailbox = await sreq.post(mailboxURL, headers=headers, json=mailboxJSON, timeout=kwargs.get('timeout', 10))
 
         async with chkMailbox:
             resp = await chkMailbox.text()
@@ -584,7 +689,7 @@ async def mailbox(target, req_session_fun) -> Dict:  # tor RU
     return result
 
 
-async def firemail(target, req_session_fun) -> Dict:  # tor RU
+async def firemail(target, req_session_fun, *args, **kwargs) -> Dict:  # tor RU
     result = {}
 
     firemailSucc = []
@@ -602,7 +707,7 @@ async def firemail(target, req_session_fun) -> Dict:  # tor RU
 
             firemailURL = f"https://firemail.de/index.php?action=checkAddressAvailability&address={targetMail}"
 
-            chkFiremail = await sreq.get(firemailURL, headers=headers, timeout=10)
+            chkFiremail = await sreq.get(firemailURL, headers=headers, timeout=kwargs.get('timeout', 10))
 
             async with chkFiremail:
                 if chkFiremail.status == 200:
@@ -612,7 +717,7 @@ async def firemail(target, req_session_fun) -> Dict:  # tor RU
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if firemailSucc:
         result["Firemail"] = firemailSucc
@@ -622,7 +727,7 @@ async def firemail(target, req_session_fun) -> Dict:  # tor RU
     return result
 
 
-async def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
+async def fastmail(target, req_session_fun, *args, **kwargs) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
     result = {}
 
     # Registration form on fastmail website automatically lowercase all input.
@@ -687,7 +792,7 @@ async def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia
                         "using": ["https://www.fastmail.com/dev/signup"]}
 
         try:
-            chkFastmail = await sreq.post(fastmailURL, headers=headers, json=fastmailJSON, timeout=5)
+            chkFastmail = await sreq.post(fastmailURL, headers=headers, json=fastmailJSON, timeout=kwargs.get('timeout', 5))
 
             async with chkFastmail:
                 if chkFastmail.status == 200:
@@ -699,7 +804,7 @@ async def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(0.5, 1.1))
+        await asyncio.sleep(random.uniform(0.5, 1.1))
 
     if fastmailSucc:
         result["Fastmail"] = fastmailSucc
@@ -709,7 +814,7 @@ async def fastmail(target, req_session_fun) -> Dict:  # sanctions against Russia
     return result
 
 
-async def startmail(target, req_session_fun) -> Dict:  # TOR
+async def startmail(target, req_session_fun, *args, **kwargs) -> Dict:  # TOR
     result = {}
 
     startmailURL = f"https://mail.startmail.com:443/api/AvailableAddresses/{target}%40startmail.com"
@@ -719,7 +824,7 @@ async def startmail(target, req_session_fun) -> Dict:  # TOR
     sreq = req_session_fun()
 
     try:
-        chkStartmail = await sreq.get(startmailURL, headers=headers, timeout=10)
+        chkStartmail = await sreq.get(startmailURL, headers=headers, timeout=kwargs.get('timeout', 10))
 
         async with chkStartmail:
             if chkStartmail.status == 404:
@@ -733,7 +838,7 @@ async def startmail(target, req_session_fun) -> Dict:  # TOR
     return result
 
 
-async def kolab(target, req_session_fun) -> Dict:
+async def kolab(target, req_session_fun, *args, **kwargs) -> Dict:
     result: Dict[str, List] = {}
 
     kolabLst = ["mykolab.com",
@@ -812,8 +917,9 @@ async def kolab(target, req_session_fun) -> Dict:
                "X-Test-Payment-Provider": "mollie",
                "X-Requested-With": "XMLHttpRequest"}
     sreq = req_session_fun()
+    timeout = kwargs.get('timeout', 10)
 
-    kolabStatus = await sreq.post(kolabURL, headers={"User-Agent": random.choice(uaLst)}, timeout=10)
+    kolabStatus = await sreq.post(kolabURL, headers={"User-Agent": random.choice(uaLst)}, timeout=timeout)
 
     if kolabStatus.status == 422:
 
@@ -832,7 +938,7 @@ async def kolab(target, req_session_fun) -> Dict:
 
             try:
                 # chkKolab = sreq.post(kolabURL, headers=headers, data=kolabPOST)
-                chkKolab = await sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=10)
+                chkKolab = await sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=timeout)
                 resp = await chkKolab.text()
 
                 if chkKolab.status == 200:
@@ -852,7 +958,7 @@ async def kolab(target, req_session_fun) -> Dict:
     return result
 
 
-async def bigmir(target, req_session_fun) -> Dict:
+async def bigmir(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     bigmirSucc = []
@@ -873,7 +979,7 @@ async def bigmir(target, req_session_fun) -> Dict:
 
             bm_data = f"login={target}@{maildomain}"
 
-            bigmirChk = await sreq.post(bigmirChkJS, headers=headers, data=bm_data, timeout=10)
+            bigmirChk = await sreq.post(bigmirChkJS, headers=headers, data=bm_data, timeout=kwargs.get('timeout', 10))
 
             async with bigmirChk:
                 if bigmirChk.status == 200:
@@ -883,7 +989,7 @@ async def bigmir(target, req_session_fun) -> Dict:
                     if "'free': false" in resp:
                         bigmirSucc.append(f"{target}@{maildomain}")
 
-            sleep(random.uniform(2, 4))
+            await asyncio.sleep(random.uniform(2, 4))
 
         except Exception as e:
             logger.error(e, exc_info=True)
@@ -896,10 +1002,10 @@ async def bigmir(target, req_session_fun) -> Dict:
     return result
 
 
-async def tutby(target, req_session_fun) -> Dict:  # Down
+async def tutby(target, req_session_fun, *args, **kwargs) -> Dict:  # Down
     result = {}
 
-    smtp_check, error = await code250('tut.by', target)
+    smtp_check, error = await code250('tut.by', target, kwargs.get('timeout', 10))
     if smtp_check:
         result['Tut.by'] = smtp_check[0]
         return result
@@ -920,7 +1026,7 @@ async def tutby(target, req_session_fun) -> Dict:  # Down
         }
 
         tutbyData = f"action=lgval&l={target64}"
-        tutbyChk = await sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=10)
+        tutbyChk = await sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=kwargs.get('timeout', 10))
 
         if tutbyChk.status == 200:
             exist = '[{"success":true}]'
@@ -938,7 +1044,7 @@ async def tutby(target, req_session_fun) -> Dict:  # Down
     return result, error
 
 
-async def xmail(target, req_session_fun) -> Dict:
+async def xmail(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     sreq = req_session_fun()
@@ -953,7 +1059,7 @@ async def xmail(target, req_session_fun) -> Dict:
     xmailPOST = {"username": target, "firstname": '', "lastname": ''}
 
     try:
-        xmailChk = await sreq.post(xmailURL, headers=headers, data=xmailPOST, timeout=10)
+        xmailChk = await sreq.post(xmailURL, headers=headers, data=xmailPOST, timeout=kwargs.get('timeout', 10))
 
         async with xmailChk:
             resp = await xmailChk.json()
@@ -968,7 +1074,7 @@ async def xmail(target, req_session_fun) -> Dict:
     return result
 
 
-async def ukrnet(target, req_session_fun) -> Dict:
+async def ukrnet(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     ukrnet_reg_urk = "https://accounts.ukr.net:443/registration"
@@ -982,10 +1088,11 @@ async def ukrnet(target, req_session_fun) -> Dict:
         "Upgrade-Insecure-Requests": "1"}
 
     sreq = req_session_fun()
+    timeout = kwargs.get('timeout', 10)
 
     try:
 
-        get_reg_ukrnet = await sreq.get(ukrnet_reg_urk, headers=headers, timeout=10)
+        get_reg_ukrnet = await sreq.get(ukrnet_reg_urk, headers=headers, timeout=timeout)
 
         async with get_reg_ukrnet:
             if get_reg_ukrnet.status == 200:
@@ -993,7 +1100,7 @@ async def ukrnet(target, req_session_fun) -> Dict:
                     ukrnetURL = "https://accounts.ukr.net:443/api/v1/registration/reserve_login"
                     ukrnetPOST = {"login": target}
 
-                    ukrnetChk = await sreq.post(ukrnetURL, headers=headers, json=ukrnetPOST, timeout=10)
+                    ukrnetChk = await sreq.post(ukrnetURL, headers=headers, json=ukrnetPOST, timeout=timeout)
 
                     async with ukrnetChk:
                         if ukrnetChk.status == 200:
@@ -1008,7 +1115,7 @@ async def ukrnet(target, req_session_fun) -> Dict:
     return result
 
 
-async def runbox(target, req_session_fun) -> Dict:
+async def runbox(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     runboxSucc = []
@@ -1058,7 +1165,7 @@ async def runbox(target, req_session_fun) -> Dict:
                     "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
                     "account_number": "", "timezone": "undefined", "runbox7": "1"}
 
-            chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=5)
+            chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
             if chkRunbox.status == 200:
                 resp = await chkRunbox.text()
@@ -1069,7 +1176,7 @@ async def runbox(target, req_session_fun) -> Dict:
             logger.error(e, exc_info=True)
 
         finally:
-            sleep(random.uniform(1, 2.1))
+            await asyncio.sleep(random.uniform(1, 2.1))
 
     if runboxSucc:
         result["Runbox"] = runboxSucc
@@ -1079,7 +1186,7 @@ async def runbox(target, req_session_fun) -> Dict:
     return result
 
 
-async def iCloud(target, req_session_fun) -> Dict:
+async def iCloud(target, req_session_fun, *args, **kwargs) -> Dict:
     result: Dict[str, List] = {}
 
     domains = [
@@ -1089,6 +1196,7 @@ async def iCloud(target, req_session_fun) -> Dict:
     ]
 
     sreq = req_session_fun()
+    timeout= kwargs.get('timeout', 5)
 
     for domain in domains:
         try:
@@ -1100,7 +1208,11 @@ async def iCloud(target, req_session_fun) -> Dict:
             }
 
             data = {'id': email}
-            check = await sreq.post('https://iforgot.apple.com/password/verify/appleid', headers=headers, data=json.dumps(data), allow_redirects=False, timeout=10)
+            check = await sreq.post('https://iforgot.apple.com/password/verify/appleid',
+                                    headers=headers, data=json.dumps(data),
+                                    allow_redirects=False,
+                                    timeout=timeout
+                                    )
             if check.headers and check.headers.get('Location', '').startswith('/password/authenticationmethod'):
                 if not result:
                     result = {'iCloud': []}
@@ -1113,7 +1225,7 @@ async def iCloud(target, req_session_fun) -> Dict:
     return result
 
 
-async def duckgo(target, req_session_fun) -> Dict:
+async def duckgo(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     duckURL = "https://quack.duckduckgo.com/api/auth/signup"
@@ -1131,7 +1243,7 @@ async def duckgo(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        checkDuck = await sreq.post(duckURL, headers=headers, data=data, timeout=5)
+        checkDuck = await sreq.post(duckURL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
         resp = await checkDuck.text()
         # if checkDuck.json()['error'] == "unavailable_username":
@@ -1146,7 +1258,7 @@ async def duckgo(target, req_session_fun) -> Dict:
     return result
 
 
-async def ctemplar(target, req_session_fun) -> Dict:
+async def ctemplar(target, req_session_fun, *args, **kwargs) -> Dict:
 
     result = {}
 
@@ -1183,7 +1295,7 @@ async def ctemplar(target, req_session_fun) -> Dict:
     return result
 
 
-async def hushmail(target, req_session_fun) -> Dict:
+async def hushmail(target, req_session_fun, *args, **kwargs) -> Dict:
 
     result = {}
 
@@ -1223,7 +1335,7 @@ async def hushmail(target, req_session_fun) -> Dict:
                 "hush_additional_tos": '', "hush_email_opt_in": '', "isValidAjax": "newaccountform"}
 
         try:
-            hushCheck = await sreq.post(hushURL, headers=headers, data=data, timeout=5)
+            hushCheck = await sreq.post(hushURL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
             if hushCheck.status == 200:
                 resp = await hushCheck.json()
@@ -1237,7 +1349,7 @@ async def hushmail(target, req_session_fun) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleeper(hushDomains, 1.1, 2.2)
+        await sleeper(hushDomains, 1.1, 2.2)
 
     if hushSucc:
         result["HushMail"] = hushSucc
@@ -1247,7 +1359,7 @@ async def hushmail(target, req_session_fun) -> Dict:
     return result
 
 
-async def emailn(target, req_session_fun) -> Dict:
+async def emailn(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     emailnURL = f"https://www.emailn.de/webmail/index.php?action=checkAddressAvailability&address={target}@emailn.de"
@@ -1271,7 +1383,7 @@ async def emailn(target, req_session_fun) -> Dict:
     return result
 
 
-async def aikq(target, req_session_fun) -> Dict:
+async def aikq(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     aikqSucc = []
 
@@ -1326,7 +1438,7 @@ async def aikq(target, req_session_fun) -> Dict:
             targetMail = f"{target}@{maildomain}"
             aikqUrl = f"https://www.aikq.de/index.php?action=checkAddressAvailability&address={targetMail}"
 
-            chkAikq = await sreq.get(aikqUrl, headers=headers, timeout=5)
+            chkAikq = await sreq.get(aikqUrl, headers=headers, timeout=kwargs.get('timeout', 5))
 
             async with chkAikq:
                 if chkAikq.status == 200:
@@ -1336,7 +1448,7 @@ async def aikq(target, req_session_fun) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if aikqSucc:
         result["Aikq"] = aikqSucc
@@ -1346,7 +1458,7 @@ async def aikq(target, req_session_fun) -> Dict:
     return result
 
 
-async def vivaldi(target, req_session_fun) -> Dict:
+async def vivaldi(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     vivaldiURL = "https://login.vivaldi.net:443/profile/validateField"
@@ -1362,7 +1474,7 @@ async def vivaldi(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        vivaldiChk = await sreq.post(vivaldiURL, headers=headers, data=vivaldiPOST, timeout=5)
+        vivaldiChk = await sreq.post(vivaldiURL, headers=headers, data=vivaldiPOST, timeout=kwargs.get('timeout', 5))
 
         body = await vivaldiChk.json(content_type=None)
 
@@ -1376,15 +1488,15 @@ async def vivaldi(target, req_session_fun) -> Dict:
 
     return result
 
-async def mailDe(target, req_session_fun) -> Dict:
+async def mailDe(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
-    mailChkLst, error = await code250("mail.de", target)
+    mailChkLst, error = await code250("mail.de", target, kwargs.get('timeout', 10))
     if mailChkLst:
         result["mail.de"] = mailChkLst[0]
     await asyncio.sleep(0)
     return result, error
 
-async def wp(target, req_session_fun) -> Dict:
+async def wp(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     wpURL = "https://poczta.wp.pl/api/v1/public/registration/accounts/availability"
@@ -1401,7 +1513,7 @@ async def wp(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        wpChk = await sreq.put(wpURL, headers=headers, data=data, timeout=5)
+        wpChk = await sreq.put(wpURL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
         body = await wpChk.json(content_type=None)
 
@@ -1415,7 +1527,7 @@ async def wp(target, req_session_fun) -> Dict:
 
     return result
 
-async def gazeta(target, req_session_fun) -> Dict:
+async def gazeta(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     gazetaURL = f"https://konto.gazeta.pl/konto/checkLogin?login={target}&nosuggestions=true"
@@ -1428,7 +1540,7 @@ async def gazeta(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        gazetaChk = await sreq.get(gazetaURL, headers=headers, timeout=5)
+        gazetaChk = await sreq.get(gazetaURL, headers=headers, timeout=kwargs.get('timeout', 5))
 
         body = await gazetaChk.json(content_type=None)
 
@@ -1442,7 +1554,7 @@ async def gazeta(target, req_session_fun) -> Dict:
 
     return result
 
-async def intpl(target, req_session_fun) -> Dict:
+async def intpl(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     intURL = "https://int.pl/v1/user/checkEmail"
@@ -1459,7 +1571,7 @@ async def intpl(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        intChk = await sreq.post(intURL, headers=headers, data=data, timeout=5)
+        intChk = await sreq.post(intURL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
         body = await intChk.json(content_type=None)
 
@@ -1473,7 +1585,7 @@ async def intpl(target, req_session_fun) -> Dict:
 
     return result
 
-async def o2(target, req_session_fun) -> Dict:
+async def o2(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     o2URL = "https://poczta.o2.pl/api/v1/public/registration/accounts/availability"
@@ -1490,7 +1602,7 @@ async def o2(target, req_session_fun) -> Dict:
     sreq = req_session_fun()
 
     try:
-        wpChk = await sreq.put(o2URL, headers=headers, data=data, timeout=5)
+        wpChk = await sreq.put(o2URL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
         body = await wpChk.json(content_type=None)
 
@@ -1504,7 +1616,7 @@ async def o2(target, req_session_fun) -> Dict:
 
     return result
 
-async def interia(target, req_session_fun) -> Dict:
+async def interia(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     interiaSucc = []
 
@@ -1537,7 +1649,7 @@ async def interia(target, req_session_fun) -> Dict:
             data = f'{{"email":"{targetMail}"}}'
 
             interiaUrl = "https://konto-pocztowe.interia.pl/odzyskiwanie-dostepu/sms"
-            chkInteria = await sreq.post(interiaUrl, headers=headers, data=data, timeout=5)
+            chkInteria = await sreq.post(interiaUrl, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
 
             async with chkInteria:
                 if chkInteria.status == 404:
@@ -1547,7 +1659,7 @@ async def interia(target, req_session_fun) -> Dict:
         except Exception as e:
             logger.error(e, exc_info=True)
 
-        sleep(random.uniform(2, 4))
+        await asyncio.sleep(random.uniform(2, 4))
 
     if interiaSucc:
         result["Interia"] = interiaSucc
@@ -1556,7 +1668,7 @@ async def interia(target, req_session_fun) -> Dict:
 
     return result
 
-async def tpl(target, req_session_fun) -> Dict:
+async def tpl(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     tplSucc = []
 
@@ -1576,7 +1688,7 @@ async def tpl(target, req_session_fun) -> Dict:
     try:
         tplUrl = f"https://t.pl/reg.php?nazwa={target}"
 
-        chkTpl = await sreq.get(tplUrl, headers=headers, timeout=5)
+        chkTpl = await sreq.get(tplUrl, headers=headers, timeout=kwargs.get('timeout', 5))
 
         async with chkTpl:
             if chkTpl.status == 200:
@@ -1595,7 +1707,7 @@ async def tpl(target, req_session_fun) -> Dict:
 
     return result
 
-async def onet(target, req_session_fun) -> Dict:
+async def onet(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     onetSucc = []
 
@@ -1634,7 +1746,7 @@ async def onet(target, req_session_fun) -> Dict:
 
     sreq = req_session_fun()
     try:
-        chkOnet = await sreq.post(onetUrl, headers=headers, data=json.dumps(data), timeout=5)
+        chkOnet = await sreq.post(onetUrl, headers=headers, data=json.dumps(data), timeout=kwargs.get('timeout', 5))
 
         async with chkOnet:
             if chkOnet.status == 200:
@@ -1677,13 +1789,13 @@ def show_banner():
         sleep(0.1337)
 
 
-async def print_results(checker, target, req_session_fun, is_verbose_mode):
+async def print_results(checker, target, req_session_fun, is_verbose_mode, timeout):
     checker_name = checker.__name__
     if is_verbose_mode:
         print(f'Running {checker_name} checker for {target}...')
 
     err = None
-    res = await checker(target, req_session_fun)
+    res = await checker(target, req_session_fun, timeout)
 
     if isinstance(res, tuple):
         res, err = res
@@ -1695,7 +1807,7 @@ async def print_results(checker, target, req_session_fun, is_verbose_mode):
 
     if err:
         print(f'Error while checking {checker_name}: {err}')
-        return
+        return {checker_name: err}
 
     for provider, emails in res.items():
         print(f'\033[1;38;5;75m{provider}: \033[0m')
@@ -1704,12 +1816,14 @@ async def print_results(checker, target, req_session_fun, is_verbose_mode):
         for email in emails:
             print(f'*  {email}')
 
+    return {checker_name: res} if res else {checker_name: None}
+
 
 CHECKERS = [gmail, yandex, proton, mailRu,
             rambler, tuta, yahoo, outlook,
             zoho, eclipso, posteo, mailbox,
             firemail, fastmail, startmail,
-            bigmir, tutby, xmail, ukrnet,
+            tutby, xmail, ukrnet, #bigmir,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
@@ -1724,10 +1838,10 @@ if __name__ == '__main__':
         '-p',
         '--provider',
         action="append",
-        metavar='<mail providers names>',
+        metavar='<mail providers name>',
         dest="providers",
         default=[],
-        help="Specify one or more mail providers by name",
+        help="Specify one or more (-p for each) mail providers by name",
     )
     parser.add_argument(
         "username",
@@ -1775,6 +1889,20 @@ if __name__ == '__main__':
         default="",
         help="Proxy string (e.g. https://user:pass@1.2.3.4:8080)",
     )
+    parser.add_argument(
+        '-t',
+        '--timeout',
+        type=int,
+        default=10,
+        help="Timeout for every check, 10 seconds by default",
+    )
+    parser.add_argument(
+        '-m',
+        '--max-connections',
+        type=int,
+        default=10,
+        help="Max connections to check (number of simultaneously checked providers), 10 by default",
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -1799,8 +1927,8 @@ if __name__ == '__main__':
         target = target.split('@')[0]
 
     if args.providers:
-        pset = set(args.providers)
-        checkers = [c for c in CHECKERS if c.__name__ in pset]
+        pset = set(map(lambda s: s.lower(), args.providers))
+        checkers = [c for c in CHECKERS if c.__name__.lower() in pset]
         if not checkers:
             print(f'Can not find providers {", ".join(args.providers)}')
     else:
@@ -1815,6 +1943,22 @@ if __name__ == '__main__':
     else:
         req_session_fun = simple_session
 
-    jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose) for checker in checkers])
+    # jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose, args.timeout) for checker in checkers])
+    # asyncio.get_event_loop().run_until_complete(jobs)
 
-    asyncio.get_event_loop().run_until_complete(jobs)
+    tasks = [(
+        print_results,
+        [checker, target, req_session_fun, args.verbose, args.timeout],
+        {},
+    ) for checker in checkers]
+
+    executor = AsyncioProgressbarQueueExecutor(
+        logger=logger,
+        in_parallel=args.max_connections,
+        timeout=args.timeout + 0.5,
+        progress_func=stub_progress,
+    )
+
+    results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
+
+    # print(results)
