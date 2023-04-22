@@ -72,7 +72,7 @@ Total 37 providers, > 170 domains and > 100 aliases.
 
 ## Mentions and articles
 
-[OSINTEditor Sunday Briefing: Sensational Headlines and Kuomintang Chairmanship Elections](https://www.osinteditor.com/general/osinteditor-sunday-briefing-sensational-headlines-and-kuomintang-chairmanship-elections/)
+[OSINTEditor Sunday Briefing: Sensational Headlines and Kuomintang Chairmanship Elections]([https://www.osinteditor.com/general/osinteditor-sunday-briefing-sensational-headlines-and-kuomintang-chairmanship-elections/](https://web.archive.org/web/20220116223051/https://www.osinteditor.com/general/osinteditor-sunday-briefing-sensational-headlines-and-kuomintang-chairmanship-elections/))
 
 [Michael Buzzel: 237 - The Huge OSINT Show by The Privacy, Security, & OSINT Show](https://soundcloud.com/user-98066669/237-the-huge-osint-show)
 
