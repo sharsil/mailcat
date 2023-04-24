@@ -1959,6 +1959,17 @@ if __name__ == '__main__':
         progress_func=stub_progress,
     )
 
-    results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
+    # results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
+    
+
+async def main():
+    timeout = 10  # Set the desired timeout value in seconds
+    jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose, timeout) for checker in checkers])
+    await jobs
+    
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
 
     # print(results)
