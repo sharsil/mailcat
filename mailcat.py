@@ -1788,7 +1788,7 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             mailDe, wp, gazeta, intpl,
             o2, interia, tpl, onet]  # -kolab -lycos(false((( )
 
-if __name__ == '__main__':
+async def start():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Mailcat",
@@ -1919,16 +1919,17 @@ if __name__ == '__main__':
     )
 
     # results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
-    
-
-async def main():
-    timeout = 10  # Set the desired timeout value in seconds
-    jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose, timeout) for checker in checkers])
+    # print(results)
+    timeout = args.timeout + 0.5  # Set the desired timeout value in seconds
+    jobs = asyncio.gather(
+        *[print_results(checker, target, req_session_fun, args.verbose, timeout) for checker in checkers])
     await jobs
     
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    try:
+        asyncio.run(start())
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
-    # print(results)
