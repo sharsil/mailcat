@@ -36,7 +36,6 @@ Total 37 providers, > 170 domains and > 100 aliases.
 | Yandex              | yandex.ru + 5 aliases                  | SMTP              |
 | Protonmail          | protonmail.com + 2 aliases             | API               |
 | iCloud              | icloud.com, me.com, mac.com            | Access recovery   |
-| tut.by              | tut.by                                 | SMTP/Registration |
 | MailRu              | mail.ru + 4 other domains              | Registration      |
 | Rambler             | rambler.ru + 5 other domains           | Registration      |
 | Tutanota            | tutanota.com + 4 other domains         | Registration      |
@@ -69,6 +68,10 @@ Total 37 providers, > 170 domains and > 100 aliases.
 | Interia             | interia.pl + 10 other domains          | Password recovery |
 | t.pl                | t.pl + 8 other domains                 | Registration      |
 | onet.pl             | onet.pl + 11 other domains & 4 aliases | Registration      |
+
+## Troubleshooting
+
+Use `-m` or `--max-connections` if you get connection errors (Mailcat do 10 parallel connections max by default).
 
 ## Mentions and articles
 
