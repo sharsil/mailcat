@@ -1002,47 +1002,6 @@ async def bigmir(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
-async def tutby(target, req_session_fun, *args, **kwargs) -> Dict:  # Down
-    result = {}
-
-    smtp_check, error = await code250('tut.by', target, kwargs.get('timeout', 10))
-    if smtp_check:
-        result['Tut.by'] = smtp_check[0]
-        return result
-
-    sreq = req_session_fun()
-
-    try:
-        target64 = str(base64.b64encode(target.encode()))
-        tutbyChkURL = "https://profile.tut.by/requests/index.php"
-
-        headers = {
-            'Pragma': 'no-cache',
-            'Origin': 'https://profile.tut.by',
-            'User-Agent': random.choice(uaLst),
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Referer': 'https://profile.tut.by/register.html',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-
-        tutbyData = f"action=lgval&l={target64}"
-        tutbyChk = await sreq.post(tutbyChkURL, headers=headers, data=tutbyData, timeout=kwargs.get('timeout', 10))
-
-        if tutbyChk.status == 200:
-            exist = '[{"success":true}]'
-            resp = await tutbyChk.text()
-
-            if exist == resp:
-                result['Tut.by'] = f'{target}@tut.by'
-
-    except Exception as e:
-        logger.error(e, exc_info=True)
-        error = str(e)
-
-    await sreq.close()
-
-    return result, error
-
 
 async def xmail(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
@@ -1823,13 +1782,13 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             rambler, tuta, yahoo, outlook,
             zoho, eclipso, posteo, mailbox,
             firemail, fastmail, startmail,
-            tutby, xmail, ukrnet, #bigmir,
+            xmail, ukrnet, #bigmir,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
             o2, interia, tpl, onet]  # -kolab -lycos(false((( )
 
-if __name__ == '__main__':
+async def start():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Mailcat",
@@ -1959,6 +1918,18 @@ if __name__ == '__main__':
         progress_func=stub_progress,
     )
 
-    results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
-
+    # results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
     # print(results)
+    timeout = args.timeout + 0.5  # Set the desired timeout value in seconds
+    jobs = asyncio.gather(
+        *[print_results(checker, target, req_session_fun, args.verbose, timeout) for checker in checkers])
+    await jobs
+    
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(start())
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+
