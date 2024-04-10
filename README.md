@@ -73,6 +73,13 @@ Total 37 providers, > 170 domains and > 100 aliases.
 
 Use `-m` or `--max-connections` if you get connection errors (Mailcat do 10 parallel connections max by default).
 
+### SOWEL classification
+
+This tool uses the following OSINT techniques:
+- [SOTL-2.2. Search For Accounts On Other Platforms](https://sowel.soxoj.com/other-platform-accounts)
+- [SOTL-6.1. Check Logins Reuse To Find Another Account](https://sowel.soxoj.com/logins-reuse)
+- [SOTL-6.2. Check Nicknames Reuse To Find Another Account](https://sowel.soxoj.com/nicknames-reuse) 
+
 ## Mentions and articles
 
 [OSINTEditor Sunday Briefing: Sensational Headlines and Kuomintang Chairmanship Elections]([https://www.osinteditor.com/general/osinteditor-sunday-briefing-sensational-headlines-and-kuomintang-chairmanship-elections/](https://web.archive.org/web/20220116223051/https://www.osinteditor.com/general/osinteditor-sunday-briefing-sensational-headlines-and-kuomintang-chairmanship-elections/))
