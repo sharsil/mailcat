@@ -19,6 +19,7 @@ from typing import Iterable, Dict, List, Callable, Tuple, Any
 import dns.resolver
 
 import tqdm
+# uses pyppeteer
 from requests_html import AsyncHTMLSession  # type: ignore
 from aiohttp_socks import ProxyConnector
 
@@ -448,17 +449,29 @@ async def yahoo(target, req_session_fun, *args, **kwargs) -> Dict:
 async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     liveSucc = []
-    sreq = AsyncHTMLSession(loop=asyncio.get_event_loop())
-    headers = {"User-Agent": random.choice(uaLst)}
+    sreq = AsyncHTMLSession()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+        "Priority": "u=0, i",
+        "Pragma": "no-cache",
+        "Cache-Control": "no-cache"
+    }
     liveLst = ["outlook.com", "hotmail.com"]
-    url_template = 'https://signup.live.com/?username={}@{}&uaid=f746d3527c20414d8c86fd7f96613d85&lic=1'
+    url_template = 'https://signup.live.com/?username={}%40{}&lic=1'
 
     for maildomain in liveLst:
         try:
             liveChk = await sreq.get(url_template.format(target, maildomain), headers=headers)
-            await liveChk.html.arender(sleep=10)
+            await liveChk.html.arender(sleep=1)
 
-            if "suggLink" in liveChk.html.html:
+            if "Someone already has this email address" in liveChk.html.html:
                 liveSucc.append(f"{target}@{maildomain}")
 
         except Exception as e:
@@ -1800,7 +1813,8 @@ async def start():
         metavar='<mail providers name>',
         dest="providers",
         default=[],
-        help="Specify one or more (-p for each) mail providers by name",
+        help="Specify one or more (-p for each) mail providers by name: " +
+             ', '.join(map(lambda f: f.__name__, CHECKERS)),
     )
     parser.add_argument(
         "username",
@@ -1862,6 +1876,12 @@ async def start():
         default=10,
         help="Max connections to check (number of simultaneously checked providers), 10 by default",
     )
+    parser.add_argument(
+        '--progressbar',
+        action="store_true",
+        default=False,
+        help="Show progressbar",
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -1902,9 +1922,6 @@ async def start():
     else:
         req_session_fun = simple_session
 
-    # jobs = asyncio.gather(*[print_results(checker, target, req_session_fun, args.verbose, args.timeout) for checker in checkers])
-    # asyncio.get_event_loop().run_until_complete(jobs)
-
     tasks = [(
         print_results,
         [checker, target, req_session_fun, args.verbose, args.timeout],
@@ -1915,16 +1932,10 @@ async def start():
         logger=logger,
         in_parallel=args.max_connections,
         timeout=args.timeout + 0.5,
-        progress_func=stub_progress,
+        progress_func=tqdm.tqdm if args.progressbar else stub_progress,
     )
 
-    # results = asyncio.get_event_loop().run_until_complete(executor.run(tasks))
-    # print(results)
-    timeout = args.timeout + 0.5  # Set the desired timeout value in seconds
-    jobs = asyncio.gather(
-        *[print_results(checker, target, req_session_fun, args.verbose, timeout) for checker in checkers])
-    await jobs
-    
+    await executor.run(tasks)
 
 if __name__ == '__main__':
     try:
