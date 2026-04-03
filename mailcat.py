@@ -2,7 +2,6 @@
 import aiohttp
 import asyncio
 import argparse
-import base64
 import datetime
 import json
 import logging
@@ -11,7 +10,6 @@ import aiosmtplib
 import string as s
 import sys
 import time
-import threading
 import re
 from time import sleep
 from typing import Iterable, Dict, List, Callable, Tuple, Any
@@ -297,7 +295,7 @@ async def mailRu(target, req_session_fun, *args, **kwargs) -> Dict:
             async with chkMailRU:
                 if chkMailRU.status == 200:
                     resp = await chkMailRU.json()
-                    if exists := resp['body']['exists']:
+                    if resp['body']['exists']:
                         mailRuSucc.append(mailruMail)
 
         except Exception as e:
@@ -594,59 +592,6 @@ async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:  # high ban
 
 async def posteo(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
-
-    posteoLst = [
-        "posteo.af",
-        "posteo.at",
-        "posteo.be",
-        "posteo.ca",
-        "posteo.ch",
-        "posteo.cl",
-        "posteo.co",
-        "posteo.co.uk",
-        "posteo.com.br",
-        "posteo.cr",
-        "posteo.cz",
-        "posteo.de",
-        "posteo.dk",
-        "posteo.ee",
-        "posteo.es",
-        "posteo.eu",
-        "posteo.fi",
-        "posteo.gl",
-        "posteo.gr",
-        "posteo.hn",
-        "posteo.hr",
-        "posteo.hu",
-        "posteo.ie",
-        "posteo.in",
-        "posteo.is",
-        "posteo.it",
-        "posteo.jp",
-        "posteo.la",
-        "posteo.li",
-        "posteo.lt",
-        "posteo.lu",
-        "posteo.me",
-        "posteo.mx",
-        "posteo.my",
-        "posteo.net",
-        "posteo.nl",
-        "posteo.no",
-        "posteo.nz",
-        "posteo.org",
-        "posteo.pe",
-        "posteo.pl",
-        "posteo.pm",
-        "posteo.pt",
-        "posteo.ro",
-        "posteo.ru",
-        "posteo.se",
-        "posteo.sg",
-        "posteo.si",
-        "posteo.tn",
-        "posteo.uk",
-        "posteo.us"]
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
@@ -952,7 +897,7 @@ async def kolab(target, req_session_fun, *args, **kwargs) -> Dict:
             try:
                 # chkKolab = sreq.post(kolabURL, headers=headers, data=kolabPOST)
                 chkKolab = await sreq.post(kolabURL, headers=headers, data=json.dumps(kolabPOST), timeout=timeout)
-                resp = await chkKolab.text()
+                await chkKolab.text()
 
                 if chkKolab.status == 200:
 
@@ -996,8 +941,6 @@ async def bigmir(target, req_session_fun, *args, **kwargs) -> Dict:
 
             async with bigmirChk:
                 if bigmirChk.status == 200:
-                    exist = "'free': false"
-
                     resp = await bigmirChk.text()
                     if "'free': false" in resp:
                         bigmirSucc.append(f"{target}@{maildomain}")
@@ -1068,7 +1011,7 @@ async def ukrnet(target, req_session_fun, *args, **kwargs) -> Dict:
 
         async with get_reg_ukrnet:
             if get_reg_ukrnet.status == 200:
-                if ukrnet_cookies := sreq.cookie_jar:
+                if sreq.cookie_jar:
                     ukrnetURL = "https://accounts.ukr.net:443/api/v1/registration/reserve_login"
                     ukrnetPOST = {"login": target}
 
@@ -1256,7 +1199,7 @@ async def ctemplar(target, req_session_fun, *args, **kwargs) -> Dict:
 
         if chkCT.status == 200:
             resp = await chkCT.json()
-            if ct_exists := resp['exists']:
+            if resp['exists']:
                 result["CTemplar"] = f"{target}@ctemplar.com"
 
     except Exception as e:
@@ -1303,7 +1246,7 @@ async def hushmail(target, req_session_fun, *args, **kwargs) -> Dict:
                 "hush_pass1": hushpass, "hush_pass2": hushpass,
                 "hush_exitpage": "https://secure.hushmail.com/pay?package=hushmail-for-healthcare-individual-5-form-monthly",
                 "package": "hushmail-for-healthcare-individual-5-form-monthly",
-                "hush_reservation_code": '', "hush_customerid": '', "hush_tos": '', "hush_privacy_policy": '',
+                "hush_reservation_code": '', "hush_tos": '', "hush_privacy_policy": '',
                 "hush_additional_tos": '', "hush_email_opt_in": '', "isValidAjax": "newaccountform"}
 
         try:
@@ -1726,7 +1669,7 @@ async def onet(target, req_session_fun, *args, **kwargs) -> Dict:
 
                 for maildomain in onetLst:
                     targetMail = f"{target}@{maildomain}"
-                    if not targetMail in body["emails"]:
+                    if targetMail not in body["emails"]:
                         onetSucc.append(targetMail) 
 
     except Exception as e:
