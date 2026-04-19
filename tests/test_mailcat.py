@@ -343,6 +343,22 @@ async def test_gazeta_not_found():
     assert result == {}
 
 
+@pytest.mark.asyncio
+async def test_mailum_found():
+    session_fun = make_mock_session(status=200, text_data="false")
+    result = await mailcat.mailum("testuser", session_fun)
+    assert "Mailum" in result
+    assert "testuser@cyberfear.com" in result["Mailum"]
+    assert "testuser@mailum.com" in result["Mailum"]
+
+
+@pytest.mark.asyncio
+async def test_mailum_not_found():
+    session_fun = make_mock_session(status=200, text_data="true")
+    result = await mailcat.mailum("testuser", session_fun)
+    assert result == {}
+
+
 # --- print_results / orchestration tests ---
 
 

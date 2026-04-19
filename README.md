@@ -68,6 +68,7 @@ Total 37 providers, > 170 domains and > 100 aliases.
 | Interia             | interia.pl + 10 other domains          | Password recovery |
 | t.pl                | t.pl + 8 other domains                 | Registration      |
 | onet.pl             | onet.pl + 11 other domains & 4 aliases | Registration      |
+| Mailum              | cyberfear.com, mailum.com              | Registration      |
 
 ## Troubleshooting
 

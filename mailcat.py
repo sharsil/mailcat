@@ -1682,6 +1682,43 @@ async def onet(target, req_session_fun, *args, **kwargs) -> Dict:
 
     return result
 
+async def mailum(target, req_session_fun, *args, **kwargs) -> Dict:
+    result = {}
+    mailumSucc = []
+
+    mailumLst = ["cyberfear.com", "mailum.com"]
+
+    mailumURL = "https://mailum.com/api/checkEmailExist4RegistrationV3"
+    headers = {
+        "User-Agent": random.choice(uaLst),
+        "Referer": "https://mailum.com/mailbox/",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
+    sreq = req_session_fun()
+
+    for maildomain in mailumLst:
+        try:
+            data = f"email={target}&domain=%40{maildomain}"
+
+            chkMailum = await sreq.post(mailumURL, headers=headers, data=data, timeout=kwargs.get('timeout', 10))
+
+            async with chkMailum:
+                if chkMailum.status == 200:
+                    resp = await chkMailum.text()
+                    if resp.strip().lower() == "false":
+                        mailumSucc.append(f"{target}@{maildomain}")
+
+        except Exception as e:
+            logger.error(e, exc_info=True)
+
+    if mailumSucc:
+        result["Mailum"] = mailumSucc
+
+    await sreq.close()
+
+    return result
+
 ####################################################################################
 def show_banner():
     banner = r"""
@@ -1742,7 +1779,8 @@ CHECKERS = [gmail, yandex, proton, mailRu,
             runbox, iCloud, duckgo, hushmail,
             ctemplar, aikq, emailn, vivaldi,
             mailDe, wp, gazeta, intpl,
-            o2, interia, tpl, onet]  # -kolab -lycos(false((( )
+            o2, interia, tpl, onet,
+            mailum]  # -kolab -lycos(false((( )
 
 async def start():
     parser = argparse.ArgumentParser(

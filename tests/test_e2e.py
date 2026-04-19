@@ -151,3 +151,11 @@ async def test_emailn_soxoj():
     """soxoj@emailn.de should not exist."""
     result = await mailcat.emailn("soxoj", mailcat.simple_session)
     assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_mailum_admin():
+    result = await mailcat.mailum("admin", mailcat.simple_session)
+    assert "Mailum" in result
+    assert "admin@cyberfear.com" in result["Mailum"]
