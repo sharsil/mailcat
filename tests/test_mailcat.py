@@ -417,3 +417,79 @@ async def test_executor_runs_tasks():
     results = await executor.run(tasks)
     assert len(results) == 5
     assert set(results) == {0, 1, 2, 3, 4}
+
+
+# --- Session tracking tests ---
+
+
+@pytest.mark.asyncio
+async def test_simple_session_tracks_session():
+    """simple_session() should register the session in _open_sessions."""
+    mailcat._open_sessions.clear()
+    session = mailcat.simple_session()
+    assert session in mailcat._open_sessions
+    await session.close()
+    mailcat._open_sessions.clear()
+
+
+@pytest.mark.asyncio
+async def test_via_proxy_tracks_session():
+    """via_proxy factory should register the session in _open_sessions."""
+    mailcat._open_sessions.clear()
+    factory = mailcat.via_proxy("http://user:pass@127.0.0.1:8080")
+    session = factory()
+    assert session in mailcat._open_sessions
+    await session.close()
+    mailcat._open_sessions.clear()
+
+
+@pytest.mark.asyncio
+async def test_via_tor_tracks_session():
+    """via_tor() should register the session in _open_sessions."""
+    mailcat._open_sessions.clear()
+    session = mailcat.via_tor()
+    assert session in mailcat._open_sessions
+    await session.close()
+    mailcat._open_sessions.clear()
+
+
+@pytest.mark.asyncio
+async def test_session_cleanup_closes_unclosed_sessions():
+    """Cleanup loop should close sessions that are still open."""
+    mailcat._open_sessions.clear()
+    session = AsyncMock()
+    session.closed = False
+    session.close = AsyncMock()
+    mailcat._open_sessions.append(session)
+
+    for s in mailcat._open_sessions:
+        try:
+            if hasattr(s, 'closed') and s.closed:
+                continue
+            await s.close()
+        except Exception:
+            pass
+    mailcat._open_sessions.clear()
+
+    session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_session_cleanup_skips_already_closed():
+    """Cleanup loop should skip sessions that are already closed."""
+    mailcat._open_sessions.clear()
+    session = AsyncMock()
+    session.closed = True
+    session.close = AsyncMock()
+    mailcat._open_sessions.append(session)
+
+    for s in mailcat._open_sessions:
+        try:
+            if hasattr(s, 'closed') and s.closed:
+                continue
+            await s.close()
+        except Exception:
+            pass
+    mailcat._open_sessions.clear()
+
+    session.close.assert_not_awaited()

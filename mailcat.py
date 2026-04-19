@@ -151,10 +151,14 @@ async def sleeper(sList, s_min, s_max):
             await asyncio.sleep(random.uniform(s_min, s_max))
 
 
+_open_sessions = []
+
+
 def via_proxy(proxy_str):
     def via():
         connector = ProxyConnector.from_url(proxy_str)
         session = aiohttp.ClientSession(connector=connector)
+        _open_sessions.append(session)
         return session
 
     return via
@@ -162,11 +166,15 @@ def via_proxy(proxy_str):
 
 def via_tor():
     connector = ProxyConnector.from_url('socks5://127.0.0.1:9050')
-    return aiohttp.ClientSession(connector=connector)
+    session = aiohttp.ClientSession(connector=connector)
+    _open_sessions.append(session)
+    return session
 
 
 def simple_session():
-    return aiohttp.ClientSession()
+    session = aiohttp.ClientSession()
+    _open_sessions.append(session)
+    return session
 
 
 async def code250(mailProvider, target, timeout=10):
@@ -448,6 +456,7 @@ async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
     liveSucc = []
     sreq = AsyncHTMLSession()
+    _open_sessions.append(sreq)
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -1917,6 +1926,15 @@ async def start():
     )
 
     await executor.run(tasks)
+
+    for session in _open_sessions:
+        try:
+            if hasattr(session, 'closed') and session.closed:
+                continue
+            await session.close()
+        except Exception:
+            pass
+    _open_sessions.clear()
 
 if __name__ == '__main__':
     try:
