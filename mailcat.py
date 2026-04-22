@@ -112,6 +112,10 @@ class AsyncioProgressbarQueueExecutor(AsyncExecutor):
             try:
                 result = await asyncio.wait_for(query_task, timeout=self.timeout)
             except asyncio.TimeoutError:
+                query_task.cancel()
+                checker_name = _get_checker_name(f, args)
+                print(f'[WARNING] {checker_name} check timed out after {int(self.timeout)}s. '
+                      f'Use -t <seconds> to increase the timeout.')
                 result = kwargs.get('default')
 
             self.results.append(result)
@@ -152,6 +156,18 @@ async def sleeper(sList, s_min, s_max):
 
 
 _open_sessions = []
+
+_CHROMIUM_ERROR_KEYWORDS = ('chromium', 'download', 'browser', 'executable',
+                             'failed to launch', 'could not find', 'pyppeteer')
+
+
+def _get_checker_name(f: Callable, args: List) -> str:
+    """Return the display name for a checker task given its function and positional args."""
+    if args and hasattr(args[0], '__name__'):
+        return args[0].__name__
+    if hasattr(f, '__name__'):
+        return f.__name__
+    return 'unknown'
 
 
 def via_proxy(proxy_str):
@@ -473,6 +489,9 @@ async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
     liveLst = ["outlook.com", "hotmail.com"]
     url_template = 'https://signup.live.com/?username={}%40{}&lic=1'
 
+    print('[INFO] Outlook check uses Chromium (pyppeteer). '
+          'On first run this downloads Chromium (~150 MB) which may take a while...')
+
     for maildomain in liveLst:
         try:
             liveChk = await sreq.get(url_template.format(target, maildomain), headers=headers)
@@ -482,6 +501,13 @@ async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
                 liveSucc.append(f"{target}@{maildomain}")
 
         except Exception as e:
+            err_str = str(e)
+            if any(kw in err_str.lower() for kw in _CHROMIUM_ERROR_KEYWORDS):
+                print(f'[WARNING] Outlook/{maildomain} check failed: Chromium/browser issue detected '
+                      f'({err_str[:200]}). '
+                      f'Ensure pyppeteer can download Chromium or increase the timeout with -t.')
+            else:
+                print(f'[WARNING] Outlook/{maildomain} check failed: {err_str[:200]}')
             logger.error(e, exc_info=True)
 
     if liveSucc:
