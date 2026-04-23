@@ -1836,7 +1836,15 @@ async def start():
         "username",
         nargs='*',
         metavar="USERNAME",
-        help="One username to search emails by",
+        help="One or more usernames to search emails by",
+    )
+    parser.add_argument(
+        '-f',
+        '--file',
+        type=str,
+        default="",
+        metavar='<path>',
+        help="Path to a file containing usernames to check, one per line",
     )
     parser.add_argument(
         '-l',
@@ -1910,16 +1918,27 @@ async def start():
         print('Supported email providers: ')
         print('  ' + ', '.join(map(lambda f: f.__name__, CHECKERS)))
 
-    target = args.username
+    targets = list(args.username)
 
-    if len(target) != 1:
-        print('Please, specify one username to search!')
+    if not targets and not args.file and args.list:
+        return
+
+    if args.file:
+        try:
+            with open(args.file) as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        targets.append(line)
+        except OSError as e:
+            print(f'Cannot read file {args.file}: {e}')
+            sys.exit(1)
+
+    if not targets:
+        print('Please, specify one or more usernames to search!')
         sys.exit(1)
-    else:
-        target = target[0]
 
-    if "@" in target:
-        target = target.split('@')[0]
+    targets = [t.split('@')[0] if '@' in t else t for t in targets]
 
     if args.providers:
         pset = set(map(lambda s: s.lower(), args.providers))
@@ -1938,20 +1957,25 @@ async def start():
     else:
         req_session_fun = simple_session
 
-    tasks = [(
-        print_results,
-        [checker, target, req_session_fun, args.verbose, args.timeout],
-        {},
-    ) for checker in checkers]
+    bulk_mode = len(targets) > 1
+    for target in targets:
+        if bulk_mode:
+            print(f'\n[*] Checking username: {target}')
 
-    executor = AsyncioProgressbarQueueExecutor(
-        logger=logger,
-        in_parallel=args.max_connections,
-        timeout=args.timeout + 0.5,
-        progress_func=tqdm.tqdm if args.progressbar else stub_progress,
-    )
+        tasks = [(
+            print_results,
+            [checker, target, req_session_fun, args.verbose, args.timeout],
+            {},
+        ) for checker in checkers]
 
-    await executor.run(tasks)
+        executor = AsyncioProgressbarQueueExecutor(
+            logger=logger,
+            in_parallel=args.max_connections,
+            timeout=args.timeout + 0.5,
+            progress_func=tqdm.tqdm if args.progressbar else stub_progress,
+        )
+
+        await executor.run(tasks)
 
     for session in _open_sessions:
         try:
