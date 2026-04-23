@@ -493,3 +493,87 @@ async def test_session_cleanup_skips_already_closed():
     mailcat._open_sessions.clear()
 
     session.close.assert_not_awaited()
+
+
+# --- Timeout warning and outlook error logging tests ---
+
+
+@pytest.mark.asyncio
+async def test_executor_prints_warning_on_timeout(capsys):
+    """Worker should print a warning with the checker name when a task times out."""
+
+    async def slow_checker(value, default=None):
+        await asyncio.sleep(10)
+        return value
+
+    slow_checker.__name__ = "slow_checker"
+
+    executor = mailcat.AsyncioProgressbarQueueExecutor(
+        logger=mailcat.logger,
+        in_parallel=1,
+        timeout=0.05,
+        progress_func=mailcat.stub_progress,
+    )
+
+    tasks = [(slow_checker, [], {"value": 42})]
+    results = await executor.run(tasks)
+
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.out
+    assert "slow_checker" in captured.out
+    assert "timed out" in captured.out
+    assert results == [None]
+
+
+@pytest.mark.asyncio
+async def test_outlook_prints_warning_on_chromium_error(capsys):
+    """outlook() should print a visible warning when a Chromium/browser error occurs."""
+
+    async def mock_get(*args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.html = MagicMock()
+
+        async def arender(*a, **kw):
+            raise Exception("Chromium revision is not downloaded")
+
+        mock_resp.html.arender = arender
+        return mock_resp
+
+    mock_session = MagicMock()
+    mock_session.get = mock_get
+    mock_session.close = AsyncMock()
+
+    with patch("mailcat.AsyncHTMLSession", return_value=mock_session):
+        result = await mailcat.outlook("testuser", lambda: None)
+
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.out
+    assert "chromium" in captured.out.lower()
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_outlook_prints_warning_on_generic_error(capsys):
+    """outlook() should print a visible warning for non-Chromium errors too."""
+
+    async def mock_get(*args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.html = MagicMock()
+
+        async def arender(*a, **kw):
+            raise Exception("connection reset by peer")
+
+        mock_resp.html.arender = arender
+        return mock_resp
+
+    mock_session = MagicMock()
+    mock_session.get = mock_get
+    mock_session.close = AsyncMock()
+
+    with patch("mailcat.AsyncHTMLSession", return_value=mock_session):
+        result = await mailcat.outlook("testuser", lambda: None)
+
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.out
+    assert "Outlook" in captured.out
+    assert result == {}
