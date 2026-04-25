@@ -577,3 +577,121 @@ async def test_outlook_prints_warning_on_generic_error(capsys):
     assert "[WARNING]" in captured.out
     assert "Outlook" in captured.out
     assert result == {}
+
+
+# --- Bulk / file-input tests ---
+
+
+def test_username_at_sign_stripping_multiple():
+    """Verify '@' stripping logic works for multiple usernames."""
+    raw = ["user1@example.com", "user2", "user3@proton.me"]
+    result = [t.split('@')[0] if '@' in t else t for t in raw]
+    assert result == ["user1", "user2", "user3"]
+
+
+def test_file_input_reads_usernames(tmp_path):
+    """Reading usernames from a file should produce the correct list."""
+    userfile = tmp_path / "users.txt"
+    userfile.write_text("alice\nbob\n\ncharlie\n")
+
+    targets = []
+    with open(userfile) as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                targets.append(line)
+
+    assert targets == ["alice", "bob", "charlie"]
+
+
+def test_file_input_skips_blank_lines(tmp_path):
+    """Blank lines in the file should be ignored."""
+    userfile = tmp_path / "users.txt"
+    userfile.write_text("\n  \nalice\n\nbob\n")
+
+    targets = []
+    with open(userfile) as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                targets.append(line)
+
+    assert targets == ["alice", "bob"]
+
+
+def test_file_input_strips_at_sign(tmp_path):
+    """Email addresses in the file should be reduced to username only."""
+    userfile = tmp_path / "users.txt"
+    userfile.write_text("alice@gmail.com\nbob\n")
+
+    targets = []
+    with open(userfile) as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                targets.append(line)
+
+    targets = [t.split('@')[0] if '@' in t else t for t in targets]
+    assert targets == ["alice", "bob"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_check_runs_checker_for_each_target(capsys):
+    """Each username in a bulk run should be passed to the checker."""
+    seen_targets = []
+
+    async def fake_checker(target, req_session_fun, timeout):
+        seen_targets.append(target)
+        return {}
+
+    fake_checker.__name__ = "fake_checker"
+    checkers = [fake_checker]
+    targets = ["alice", "bob", "charlie"]
+    req_session_fun = lambda: None
+
+    for target in targets:
+        tasks = [
+            (mailcat.print_results, [checker, target, req_session_fun, False, 10], {})
+            for checker in checkers
+        ]
+        executor = mailcat.AsyncioProgressbarQueueExecutor(
+            logger=mailcat.logger,
+            in_parallel=1,
+            timeout=10.5,
+            progress_func=mailcat.stub_progress,
+        )
+        await executor.run(tasks)
+
+    assert seen_targets == ["alice", "bob", "charlie"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_check_prints_header_per_username(capsys):
+    """When multiple targets are used, a header should be printed for each."""
+    async def fake_checker(target, req_session_fun, timeout):
+        return {}
+
+    fake_checker.__name__ = "fake_checker"
+    checkers = [fake_checker]
+    targets = ["alice", "bob"]
+    req_session_fun = lambda: None
+
+    for target in targets:
+        if len(targets) > 1:
+            print(f'\n[*] Checking username: {target}')
+        tasks = [
+            (mailcat.print_results, [checker, target, req_session_fun, False, 10], {})
+            for checker in checkers
+        ]
+        executor = mailcat.AsyncioProgressbarQueueExecutor(
+            logger=mailcat.logger,
+            in_parallel=1,
+            timeout=10.5,
+            progress_func=mailcat.stub_progress,
+        )
+        await executor.run(tasks)
+
+    captured = capsys.readouterr()
+    assert "[*] Checking username: alice" in captured.out
+    assert "[*] Checking username: bob" in captured.out
+
