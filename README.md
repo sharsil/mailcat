@@ -26,6 +26,35 @@ Examples:
 
 	./mailcat.py username --proxy http://1.2.3.4:8080
 
+## Batch mode
+
+You can check multiple usernames in one run.
+
+Pass several usernames as positional arguments:
+
+	./mailcat.py alice bob charlie
+
+Or supply a file with one username (or email address) per line:
+
+	./mailcat.py --file usernames.txt
+
+File format example:
+
+	alice
+	bob@proton.me
+	charlie
+
+You can also combine both — positional names are merged with those from the file:
+
+	./mailcat.py alice --file more_users.txt
+
+When more than one username is resolved, a header is printed before each result block so the output is easy to follow:
+
+	[*] Checking username: alice
+	...
+	[*] Checking username: bob
+	...
+
 ## Supported providers
 
 Total 37 providers, > 170 domains and > 100 aliases.
