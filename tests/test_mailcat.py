@@ -85,11 +85,34 @@ def make_mock_session(status=200, json_data=None, text_data=""):
 # --- Checker tests with mocked HTTP ---
 
 
+def make_proton_mock_session(check_status, check_json):
+    """Proton needs two responses: POST /auth/v4/sessions then GET /users/available."""
+    auth_resp = AsyncMock()
+    auth_resp.status = 200
+    auth_resp.json = AsyncMock(return_value={"AccessToken": "tok", "UID": "uid"})
+    auth_resp.__aenter__ = AsyncMock(return_value=auth_resp)
+    auth_resp.__aexit__ = AsyncMock(return_value=False)
+
+    check_resp = AsyncMock()
+    check_resp.status = check_status
+    check_resp.json = AsyncMock(return_value=check_json)
+    check_resp.__aenter__ = AsyncMock(return_value=check_resp)
+    check_resp.__aexit__ = AsyncMock(return_value=False)
+
+    session = AsyncMock()
+    session.post = AsyncMock(return_value=auth_resp)
+    session.get = AsyncMock(return_value=check_resp)
+    session.close = AsyncMock()
+    session.cookie_jar = True
+
+    return lambda: session
+
+
 @pytest.mark.asyncio
 async def test_proton_found():
-    session_fun = make_mock_session(
-        status=409,
-        json_data={"Error": "Username already used"},
+    session_fun = make_proton_mock_session(
+        check_status=409,
+        check_json={"Error": "Username already used"},
     )
     result = await mailcat.proton("testuser", session_fun)
     assert "Proton" in result
@@ -100,7 +123,7 @@ async def test_proton_found():
 
 @pytest.mark.asyncio
 async def test_proton_not_found():
-    session_fun = make_mock_session(status=200, json_data={})
+    session_fun = make_proton_mock_session(check_status=200, check_json={"Code": 1000})
     result = await mailcat.proton("testuser", session_fun)
     assert result == {}
 
@@ -129,7 +152,8 @@ async def test_zoho_not_found():
 async def test_yahoo_found():
     session_fun = make_mock_session(
         status=200,
-        text_data='{"errors":[{"name":"yid","error":"IDENTIFIER_EXISTS"}]}',
+        json_data={"fields": {"userId": {"value": "testuser",
+                                         "error": {"id": "IDENTIFIER_NOT_AVAILABLE"}}}},
     )
     result = await mailcat.yahoo("testuser", session_fun)
     assert result == {"Yahoo": "testuser@yahoo.com"}
@@ -139,9 +163,21 @@ async def test_yahoo_found():
 async def test_yahoo_not_found():
     session_fun = make_mock_session(
         status=200,
-        text_data='{"errors":[]}',
+        json_data={"fields": {"userId": {"value": "testuser"}}},
     )
     result = await mailcat.yahoo("testuser", session_fun)
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_yahoo_reserved_word_treated_as_not_found():
+    """Yahoo flags some names (e.g. 'admin') as RESERVED_WORD_PRESENT — treat as not-taken."""
+    session_fun = make_mock_session(
+        status=200,
+        json_data={"fields": {"userId": {"value": "admin",
+                                         "error": {"id": "RESERVED_WORD_PRESENT"}}}},
+    )
+    result = await mailcat.yahoo("admin", session_fun)
     assert result == {}
 
 
@@ -262,34 +298,6 @@ async def test_xmail_not_found():
         json_data={"username": True},
     )
     result = await mailcat.xmail("testuser", session_fun)
-    assert result == {}
-
-
-@pytest.mark.asyncio
-async def test_ctemplar_found():
-    session_fun = make_mock_session(
-        status=200,
-        json_data={"exists": True},
-    )
-    result = await mailcat.ctemplar("testuser", session_fun)
-    assert result == {"CTemplar": "testuser@ctemplar.com"}
-
-
-@pytest.mark.asyncio
-async def test_ctemplar_not_found():
-    session_fun = make_mock_session(
-        status=200,
-        json_data={"exists": False},
-    )
-    result = await mailcat.ctemplar("testuser", session_fun)
-    assert result == {}
-
-
-@pytest.mark.asyncio
-async def test_ctemplar_invalid_username():
-    """Usernames not matching the regex should return empty immediately."""
-    session_fun = make_mock_session(status=200)
-    result = await mailcat.ctemplar("a.", session_fun)
     assert result == {}
 
 
@@ -527,23 +535,12 @@ async def test_executor_prints_warning_on_timeout(capsys):
 
 @pytest.mark.asyncio
 async def test_outlook_prints_warning_on_chromium_error(capsys):
-    """outlook() should print a visible warning when a Chromium/browser error occurs."""
+    """outlook() should print a visible warning when Chromium fails to launch."""
 
-    async def mock_get(*args, **kwargs):
-        mock_resp = MagicMock()
-        mock_resp.html = MagicMock()
+    async def boom():
+        raise Exception("Chromium revision is not downloaded")
 
-        async def arender(*a, **kw):
-            raise Exception("Chromium revision is not downloaded")
-
-        mock_resp.html.arender = arender
-        return mock_resp
-
-    mock_session = MagicMock()
-    mock_session.get = mock_get
-    mock_session.close = AsyncMock()
-
-    with patch("mailcat.AsyncHTMLSession", return_value=mock_session):
+    with patch.object(mailcat, "_launch_headless", boom):
         result = await mailcat.outlook("testuser", lambda: None)
 
     captured = capsys.readouterr()
@@ -556,26 +553,63 @@ async def test_outlook_prints_warning_on_chromium_error(capsys):
 async def test_outlook_prints_warning_on_generic_error(capsys):
     """outlook() should print a visible warning for non-Chromium errors too."""
 
-    async def mock_get(*args, **kwargs):
-        mock_resp = MagicMock()
-        mock_resp.html = MagicMock()
+    async def boom():
+        raise Exception("connection reset by peer")
 
-        async def arender(*a, **kw):
-            raise Exception("connection reset by peer")
-
-        mock_resp.html.arender = arender
-        return mock_resp
-
-    mock_session = MagicMock()
-    mock_session.get = mock_get
-    mock_session.close = AsyncMock()
-
-    with patch("mailcat.AsyncHTMLSession", return_value=mock_session):
+    with patch.object(mailcat, "_launch_headless", boom):
         result = await mailcat.outlook("testuser", lambda: None)
 
     captured = capsys.readouterr()
     assert "[WARNING]" in captured.out
     assert "Outlook" in captured.out
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_intpl_prints_warning_on_chromium_error(capsys):
+    """intpl() should print a Chromium warning when the browser fails to launch."""
+
+    async def boom():
+        raise Exception("Chromium revision is not downloaded")
+
+    with patch.object(mailcat, "_launch_headless", boom):
+        result = await mailcat.intpl("testuser", lambda: None)
+
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.out
+    assert "chromium" in captured.out.lower()
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_fastmail_prints_warning_on_chromium_error(capsys):
+    """fastmail() should print a Chromium warning when the browser fails to launch."""
+
+    async def boom():
+        raise Exception("Chromium revision is not downloaded")
+
+    with patch.object(mailcat, "_launch_headless", boom):
+        result = await mailcat.fastmail("testuser", lambda: None)
+
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.out
+    assert "chromium" in captured.out.lower()
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_onet_prints_warning_on_chromium_error(capsys):
+    """onet() should print a Chromium warning when the browser fails to launch."""
+
+    async def boom():
+        raise Exception("Chromium revision is not downloaded")
+
+    with patch.object(mailcat, "_launch_headless", boom):
+        result = await mailcat.onet("testuser", lambda: None)
+
+    captured = capsys.readouterr()
+    assert "[WARNING]" in captured.out
+    assert "chromium" in captured.out.lower()
     assert result == {}
 
 
