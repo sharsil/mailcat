@@ -18,8 +18,7 @@ Then just run the script:
 
 	./mailcat.py username
 
-It's recommended to run script through Tor or proxy. You can use internal Tor routing (`--tor`) or proxychains.
-Examples:
+It's recommended to run script through Tor or a proxy — see [Routing through Tor](#routing-through-tor) below.
 
 	./mailcat.py --tor username
 	proxychains4 -q python3 mailcat.py username
@@ -57,51 +56,83 @@ When more than one username is resolved, a header is printed before each result 
 
 ## Supported providers
 
-Total 37 providers, > 170 domains and > 100 aliases.
+**25 active providers covering > 155 domains** (plus ~50 Posteo alias domains).
+Active checks run by default; deprecated checks remain in the source for revival
+but are skipped on a default run. See the comment block above each function in
+`mailcat.py` for the upstream change that broke it and notes on how to revive it.
 
-| Name                | Domains                                | Method            |
-| ------------------- | -------------------------------------- | ----------------- |
-| Gmail               | gmail.com                              | SMTP              |
-| Yandex              | yandex.ru + 5 aliases                  | SMTP              |
-| Protonmail          | protonmail.com + 2 aliases             | API               |
-| iCloud              | icloud.com, me.com, mac.com            | Access recovery   |
-| MailRu              | mail.ru + 4 other domains              | Registration      |
-| Rambler             | rambler.ru + 5 other domains           | Registration      |
-| Tutanota            | tutanota.com + 4 other domains         | Registration      |
-| Yahoo               | yahoo.com                              | Registration      |
-| Outlook             | outlook.com, hotmail.com               | Registration      |
-| Zoho                | zohomail.com                           | Registration      |
-| Lycos               | lycos.com                              | Registration      |
-| Eclipso             | eclipso.eu + 9 other domains           | Registration      |
-| Posteo              | posteo.net + 50 aliases                | Registration      |
-| Mailbox.org         | mailbox.org                            | Registration      |
-| Firemail            | firemail.de + 2 other domains          | Registration      |
-| Fastmail            | fastmail.com                           | Registration      |
-| StartMail           | startmail.com                          | Registration      |
-| KOLABNOW            | kolabnow.com + 23 aliases              | Registration      |
-| bigmir)net          | i.ua, ua.fm, email.ua                  | Registration      |
-| Xmail               | xmail.net                              | Registration      |
-| Ukrnet              | ukr.net                                | Registration      |
-| Runbox              | runbox.com + 30 other domains          | Registration      |
-| DuckGo              | duck.com                               | Registration      | 
-| HushMail            | hushmail.com + 5 other domains         | Registration      |
-| CTemplar            | ctemplar.com                           | Registration      |
-| emailn              | emailn.de                              | Registration      |
-| aikq                | aikq.de + 40 other domains             | Registration      |
-| Vivaldi             | vivaldi.net                            | Registration      |
-| mailDe              | mail.de                                | SMTP              |
-| Wirtualna Polska    | wp.pl                                  | Registration      |
-| Gazeta.pl           | gazeta.pl                              | Registration      |
-| int.pl              | int.pl                                 | Registration      |
-| O2                  | o2.pl                                  | Registration      |
-| Interia             | interia.pl + 10 other domains          | Password recovery |
-| t.pl                | t.pl + 8 other domains                 | Registration      |
-| onet.pl             | onet.pl + 11 other domains & 4 aliases | Registration      |
-| Mailum              | cyberfear.com, mailum.com              | Registration      |
+| Name        | Domains                              | Method            | Status     |
+| ----------- | ------------------------------------ | ----------------- | ---------- |
+| Gmail       | gmail.com                            | SMTP              | Active     |
+| Yandex      | yandex.ru + 5 aliases                | SMTP              | Active     |
+| Protonmail  | protonmail.com + 3 aliases           | API               | Active     |
+| MailRu      | mail.ru + 4 other domains            | Registration      | Active     |
+| Rambler     | rambler.ru + 5 other domains         | Registration      | Active     |
+| Yahoo       | yahoo.com                            | Registration      | Active     |
+| Outlook     | outlook.com, hotmail.com             | Headless Chromium | Active     |
+| Zoho        | zohomail.com                         | Registration      | Active     |
+| Eclipso     | eclipso.eu + 9 other domains         | Registration      | Active     |
+| Posteo      | posteo.net + ~50 aliases             | Registration      | Active     |
+| Firemail    | firemail.de + 2 other domains        | Registration      | Active     |
+| Fastmail    | fastmail.com                         | Headless Chromium | Active     |
+| StartMail   | startmail.com                        | Registration      | Active     |
+| Ukrnet      | ukr.net                              | Registration      | Active     |
+| Runbox      | runbox.com + 29 other domains        | Registration      | Active     |
+| DuckGo      | duck.com                             | Registration      | Active     |
+| emailn      | emailn.de                            | Registration      | Active     |
+| aikq        | aikq.de + 40 other domains           | Registration      | Active     |
+| Vivaldi     | vivaldi.net                          | Registration      | Active     |
+| mailDe      | mail.de                              | SMTP              | Active     |
+| int.pl      | int.pl                               | Headless Chromium | Active     |
+| Interia     | interia.pl + 10 other domains        | Password recovery | Active     |
+| t.pl        | t.pl + 8 other domains               | Registration      | Active     |
+| onet.pl     | onet.pl + 15 other domains           | Headless Chromium | Active     |
+| Mailum      | cyberfear.com, mailum.com            | Registration      | Active     |
+| iCloud      | icloud.com, me.com, mac.com          | Account recovery  | Deprecated |
+| HushMail    | hushmail.com + 5 other domains       | Registration      | Deprecated |
+| Xmail       | xmail.net                            | Registration      | Deprecated |
+| Tutanota    | tutanota.com + 4 other domains       | Registration      | Deprecated |
+| Mailbox.org | mailbox.org                          | Registration      | Deprecated |
+| WP          | wp.pl                                | Registration      | Deprecated |
+| O2          | o2.pl                                | Registration      | Deprecated |
+| Gazeta.pl   | gazeta.pl                            | Registration      | Deprecated |
 
 ## Troubleshooting
 
-Use `-m` or `--max-connections` if you get connection errors (Mailcat do 10 parallel connections max by default).
+Use `-m` or `--max-connections` if you get connection errors (Mailcat does 10 parallel connections max by default).
+
+### Routing through Tor
+
+The SMTP-based checks (`gmail`, `yandex`, `mailDe`) reach the destination
+provider's MX servers on TCP port 25. Most residential ISPs and every major
+cloud provider (AWS, GCP, Azure, Heroku, …) **block outbound port 25** as
+an anti-spam measure, so these checks will time out with messages like:
+
+	Error while checking gmail: Timed out connecting to gmail-smtp-in.l.google.com. on port 25
+
+Tor exit nodes generally do not have port 25 blocked, which makes routing
+through Tor the easiest fix. Mailcat has built-in Tor support via the
+`--tor` flag — it expects a SOCKS5 proxy at `127.0.0.1:9050` (the default
+when you run `tor` locally).
+
+	# 1. Start Tor (macOS / Linux)
+	brew install tor && tor &        # macOS
+	sudo systemctl start tor          # Linux with systemd
+
+	# 2. Run mailcat through Tor — SMTP checks now succeed
+	./mailcat.py alex --tor
+
+	# Or restrict to just the providers that need it
+	./mailcat.py alex --tor -p gmail -p yandex -p mailDe
+
+Tor adds ~5–15 s of latency per request, but it is the only reliable way
+to make the SMTP-25 checks work from a typical home or cloud environment.
+A clean VPS with unblocked egress 25 (Hetzner after verification, OVH,
+Vultr) works equally well — point mailcat at it via `--proxy` or just run
+mailcat on the VPS itself.
+
+The HTTP-based checks (everything else) work fine from any network and
+do not require Tor.
 
 ### SOWEL classification
 

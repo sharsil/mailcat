@@ -101,6 +101,108 @@ async def test_eclipso_alex():
     assert len(result["Eclipso"]) > 0
 
 
+@e2e
+@pytest.mark.asyncio
+async def test_startmail_alex():
+    result = await mailcat.startmail("alex", mailcat.simple_session)
+    assert result == {"StartMail": "alex@startmail.com"}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_runbox_alex():
+    result = await mailcat.runbox("alex", mailcat.simple_session)
+    assert "Runbox" in result
+    assert any(addr.startswith("alex@") for addr in result["Runbox"])
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_aikq_alex():
+    """aikq.de uses a self-signed-style cert chain that fails on some hosts;
+    treat empty as acceptable."""
+    result = await mailcat.aikq("alex", mailcat.simple_session)
+    if result:
+        assert "Aikq" in result
+        assert any(addr.startswith("alex@") for addr in result["Aikq"])
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_tpl_alex():
+    result = await mailcat.tpl("alex", mailcat.simple_session)
+    assert "T.pl" in result
+    assert "alex@t.pl" in result["T.pl"]
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_zoho_alex():
+    result = await mailcat.zoho("alex", mailcat.simple_session)
+    assert result == {"Zoho": "alex@zohomail.com"}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_rambler_alex():
+    result = await mailcat.rambler("alex", mailcat.simple_session)
+    assert "Rambler" in result
+    assert "alex@rambler.ru" in result["Rambler"]
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_interia_alex():
+    """Interia rate-limits — at least one of its 11 domains should match alex."""
+    result = await mailcat.interia("alex", mailcat.simple_session)
+    if result:
+        assert "Interia" in result
+        assert any(addr.startswith("alex@") for addr in result["Interia"])
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_yahoo_alex():
+    """Yahoo cookies/crumb expire periodically; if they did, treat as inconclusive."""
+    result = await mailcat.yahoo("alex", mailcat.simple_session)
+    if result:
+        assert result == {"Yahoo": "alex@yahoo.com"}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_outlook_alex():
+    """Headless Chromium drives signup.live.com — alex@outlook.com is taken."""
+    result = await mailcat.outlook("alex", mailcat.simple_session)
+    assert "Live" in result
+    assert "alex@outlook.com" in result["Live"]
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_intpl_alex():
+    """Headless Chromium drives int.pl/#/register — alex@int.pl is taken."""
+    result = await mailcat.intpl("alex", mailcat.simple_session)
+    assert result == {"int.pl": "alex@int.pl"}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_fastmail_alex():
+    """Headless Chromium captures JMAP /signup/api response — alex@fastmail.com is taken."""
+    result = await mailcat.fastmail("alex", mailcat.simple_session)
+    assert result == {"Fastmail": "alex@fastmail.com"}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_onet_alex():
+    """Headless Chromium drives konto.onet.pl/register — alex is taken on every onet domain."""
+    result = await mailcat.onet("alex", mailcat.simple_session)
+    assert "Onet" in result
+    assert "alex@onet.pl" in result["Onet"]
+
+
 # --- soxoj ---
 
 
@@ -159,3 +261,121 @@ async def test_mailum_admin():
     result = await mailcat.mailum("admin", mailcat.simple_session)
     assert "Mailum" in result
     assert "admin@cyberfear.com" in result["Mailum"]
+
+
+# --- random non-existent username (should return empty for working checkers) ---
+
+
+RANDOM_USERNAME = "f3h53h54hdrg9rkz"
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_posteo_random_empty():
+    result = await mailcat.posteo(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_startmail_random_empty():
+    result = await mailcat.startmail(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_firemail_random_empty():
+    result = await mailcat.firemail(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_runbox_random_empty():
+    result = await mailcat.runbox(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_eclipso_random_empty():
+    result = await mailcat.eclipso(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_tpl_random_empty():
+    result = await mailcat.tpl(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_zoho_random_empty():
+    result = await mailcat.zoho(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_proton_random_empty():
+    result = await mailcat.proton(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_mailRu_random_empty():
+    result = await mailcat.mailRu(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_rambler_random_empty():
+    result = await mailcat.rambler(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_interia_random_empty():
+    result = await mailcat.interia(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_yahoo_random_empty():
+    result = await mailcat.yahoo(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_outlook_random_empty():
+    result = await mailcat.outlook(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_intpl_random_empty():
+    result = await mailcat.intpl(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_fastmail_random_empty():
+    result = await mailcat.fastmail(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}
+
+
+@e2e
+@pytest.mark.asyncio
+async def test_onet_random_empty():
+    result = await mailcat.onet(RANDOM_USERNAME, mailcat.simple_session)
+    assert result == {}

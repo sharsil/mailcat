@@ -266,27 +266,36 @@ async def proton(target, req_session_fun, *args, **kwargs) -> Dict:
     protonSucc = []
     sreq = req_session_fun()
 
-    protonURL = f"https://account.proton.me/api/core/v4/users/available?Name={target}"
-
-    headers = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
-                "Accept": "application/vnd.protonmail.v1+json",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "Referer": "https://mail.protonmail.com/create/new?language=en",
-                "x-pm-appversion": "web-account@5.0.18.4",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
-                "DNT": "1", "Connection": "close"}
+    appversion = "web-account@5.0.290.0"
+    base_headers = {"User-Agent": random.choice(uaLst),
+                    "Accept": "application/vnd.protonmail.v1+json",
+                    "x-pm-appversion": appversion}
+    # Proton intentionally throttles the availability endpoint by ~10s, so the
+    # request timeout has to be larger than the typical 5s default.
+    outer_timeout = args[0] if args else kwargs.get('timeout', 20)
+    request_timeout = max(outer_timeout - 1, 15)
 
     try:
+        sess = await sreq.post("https://account.proton.me/api/auth/v4/sessions",
+                               headers={**base_headers, "Content-Type": "application/json"},
+                               json={}, timeout=request_timeout)
+        async with sess:
+            if sess.status != 200:
+                return result
+            sess_data = await sess.json()
+            access_token = sess_data["AccessToken"]
+            uid = sess_data["UID"]
 
-        chkProton = await sreq.get(protonURL, headers=headers, timeout=kwargs.get('timeout', 5))
+        protonURL = f"https://account.proton.me/api/users/available?Name={target}"
+        auth_headers = {**base_headers,
+                        "Authorization": f"Bearer {access_token}",
+                        "x-pm-uid": uid}
 
+        chkProton = await sreq.get(protonURL, headers=auth_headers, timeout=request_timeout)
         async with chkProton:
             if chkProton.status == 409:
                 resp = await chkProton.json()
-                exists = resp['Error']
-                if exists == "Username already used":
+                if resp.get('Error') == "Username already used":
                     protonSucc = [f"{target}@{protodomain}" for protodomain in protonLst]
 
     except Exception as e:
@@ -335,54 +344,38 @@ async def mailRu(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
-async def rambler(target, req_session_fun, *args, **kwargs) -> Dict:  # basn risk
+async def rambler(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
     ramblerMail = ["rambler.ru", "lenta.ru", "autorambler.ru", "myrambler.ru", "ro.ru", "rambler.ua"]
     ramblerSucc = []
     sreq = req_session_fun()
+    timeout = kwargs.get('timeout', 5)
+    ramblerChkURL = "https://id.rambler.ru/jsonrpc"
 
-    for maildomain in ramblerMail:
-
+    async def check_one(maildomain):
+        targetMail = f"{target}@{maildomain}"
+        headers = {"User-Agent": random.choice(uaLst),
+                   "Content-Type": "application/json",
+                   "Origin": "https://id.rambler.ru",
+                   "X-Client-Request-Id": randstr(20)}
+        ramblerJSON = {"method": "Rambler::Id::login_available",
+                       "params": [{"username": target, "realm": maildomain}],
+                       "rpc": "2.0"}
         try:
-            targetMail = f"{target}@{maildomain}"
-
-            # reqID = ''.join(random.sample((s.ascii_lowercase + s.ascii_uppercase + s.digits), 20))
-            reqID = randstr(20)
-            userAgent = random.choice(uaLst)
-            ramblerChkURL = "https://id.rambler.ru:443/jsonrpc"
-
-            #            "Referer": "https://id.rambler.ru/login-20/mail-registration?back=https%3A%2F%2Fmail.rambler.ru%2F&rname=mail&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru",
-
-            headers = {"User-Agent": userAgent,
-                       "Referer": "https://id.rambler.ru/login-20/mail-registration?utm_source=head"
-                                  "&utm_campaign=self_promo&utm_medium=header&utm_content=mail&rname=mail"
-                                  "&back=https%3A%2F%2Fmail.rambler.ru%2F%3Futm_source%3Dhead%26utm_campaign%3Dself_promo%26utm_medium%3Dheader%26utm_content%3Dmail"
-                                  "&param=embed&iframeOrigin=https%3A%2F%2Fmail.rambler.ru&theme=mail-web",
-                       "Content-Type": "application/json",
-                       "Origin": "https://id.rambler.ru",
-                       "X-Client-Request-Id": reqID}
-
-            ramblerJSON = {"method": "Rambler::Id::login_available", "params": [{"login": targetMail}], "rpc": "2.0"}
-            ramblerChk = await sreq.post(ramblerChkURL, headers=headers, json=ramblerJSON, timeout=5)
-
+            ramblerChk = await sreq.post(ramblerChkURL, headers=headers, json=ramblerJSON, timeout=timeout)
             async with ramblerChk:
                 if ramblerChk.status == 200:
-                    try:
-                        resp = await ramblerChk.json(content_type=None)
-                        exist = resp['result']['profile']['status']
-                        if exist == "exist":
-                            ramblerSucc.append(targetMail)
-                            # print("[+] Success with {}".format(targetMail))
-                        # else:
-                        #    print("[-]".format(ramblerChk.text))
-                    except KeyError as e:
-                        logger.error(e, exc_info=True)
-
-            await asyncio.sleep(random.uniform(4, 6))  # don't reduce
-
+                    resp = await ramblerChk.json(content_type=None)
+                    profile = resp.get('result', {}).get('profile')
+                    if profile and profile.get('status') == 'exist':
+                        return targetMail
         except Exception as e:
             logger.error(e, exc_info=True)
+        return None
+
+    checked = await asyncio.gather(*(check_one(d) for d in ramblerMail))
+    ramblerSucc = [m for m in checked if m]
 
     if ramblerSucc:
         result["Rambler"] = ramblerSucc
@@ -392,7 +385,17 @@ async def rambler(target, req_session_fun, *args, **kwargs) -> Dict:  # basn ris
     return result
 
 
+# DEPRECATED — not in CHECKERS.
+# Why: the old endpoint `mail.tutanota.com/rest/sys/mailaddressavailabilityservice`
+# returns 404 (tutanota → tuta migration). The new
+# `MultipleMailAddressAvailabilityService` in tutao/tutanota requires a
+# `signupToken` derived from solving an hCaptcha during the multi-step
+# plan-selection signup. Headless can navigate to the Username step but the
+# actual availability XHR only fires after hCaptcha is solved.
+# How to revive: integrate a paid hCaptcha-solver to obtain a `signupToken`,
+# then drive the captured XHR through the headless page context.
 async def tuta(target, req_session_fun, *args, **kwargs) -> Dict:
+    print('[DEPRECATED] tuta is unmaintained — needs hCaptcha-solver. See comment in mailcat.py.')
     result = {}
 
     headers = {
@@ -437,29 +440,57 @@ async def tuta(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
+# Yahoo's signup-validation endpoint requires a live session: cookies (A3/AS/A1)
+# bound to a freshly-issued crumb+acrumb pair. They expire (typically within hours).
+# To refresh, open https://login.yahoo.com/account/create in a browser, capture the
+# request to /account/create/validate?validateField=userId from DevTools → Network,
+# and update the values below from the request's Cookie header and form body.
+YAHOO_COOKIE = (
+    "A3=d=AQABBJK4K2UCEAWUDcjLIvEH-c6KG8c1eMIFEgABCAH-LGVdZe2Nb2UB9qMCAAcIhrgrZTGnS40&S=AQAAAkx3bsNQC6tBk4t5FhyfwjM; "
+    "AS=v=1&s=JK0QUN1R&d=A69ef978c|vs7EcUH.2TpK2gUo.ZVIpkF5DCTlDJBGf00jlfYWcX2xKq5_HvBg_h9UXRF3T9c66GOoQMnFvEEizSFimaGjFx8iW7DxAU8JI4iGQ8dZ5AT5Ykl51ov.Wy0tzyXOjOO3z5kJXqG4_JqLZ4O4znc49QLFUzP7WWjFe8.TPIRZT.jtycb5UjMpawQSYRO369OeO_Ag7Rfy0FVB5P1vltnPwktxq8QzXT5lwL.n3zc3TgvrT1aZdFbytNQWsFGAcN7rSV8iReYIZ9qgi1b5Hf7vEJk1sedp.xqeLvlQ1AQm_A.91o.biw10MJrZWQFEeuqCu4vt09EehxmHIQIPh6h_XK7sS.IBznmRi0I_M2yYWsvcJ6Y._lNdC60adEb6SpHK408YwYPTBMoFa2_EePVrMPRzJIO0fxzkGn0CTBhUunt8KJ0FPENDBPFhmC8J711DD_UGamWyTKoG.38D_vRAd2hnkB_eqCDHY2ym3xO.Bpp98zl4Mhtc9O00DkRWbPeg9becHdRhAf6dJlpgTwKnHD1Ya30CeJY.etu8RU7xuEi7gIh6ZtU.Bj4n7N4xbUz6tJMwKI6AdVv2YJebFmthDixCY40F.Wkfe6nSQhS8RmfNcXpIAXGzBel5Vz1VozGfQ5042GIUE6SvD38fRqz1hcXYdiCNq9u1unnJsaZCn7gB.3OVfz63GUcQpIO2s1rXOJzYDRIllPc.GmsktUcHEbkCAIBdPr4en5I4BB_7G3LDQJZFKDJkMWivxWOiXJ0ZNU2_TFS9mkJ5AgiAtGwQOtk7aRhPH5UDJazcxR_MDKVCRelKUJl.hc1blPX6qznnQmyXXqST39Cfupr5OYQZLpJkWjuwdBKyW8f5zzLn.Lxwas51t.wocOdL.oLk.TmJ18v2NQtllTToakTUttO5dq1XrFpo2rkV.tLSITRwW1a0.iu1txVqMHweTqU6AMg9efhUtkR8UTq95rhtp_6qft35Ysq1v1pnJutIWs0HTyAud9o7a7O.fD46CwQDRKK6jhJCWtNOS099vYgu19AE9L0Wp9N5b0WG1s34jBHpP34sLY3whb8mKec8AwbBS6IFOOyUEiCPpLRMmkbCRNF654eNkvmX7K9c2NvZXiiHNCh5a7J7D9dvvDftr7XM572uPPYdxq1xGKm5hbALux7mghpbcLdkpR7i_KL247pSaqhCmi6BTTiY0Wo5AA--~A; "
+    "A1=d=AQABBJK4K2UCEAWUDcjLIvEH-c6KG8c1eMIFEgABCAH-LGVdZe2Nb2UB9qMCAAcIhrgrZTGnS40&S=AQAAAkx3bsNQC6tBk4t5FhyfwjM; "
+    "A1S=d=AQABBJK4K2UCEAWUDcjLIvEH-c6KG8c1eMIFEgABCAH-LGVdZe2Nb2UB9qMCAAcIhrgrZTGnS40&S=AQAAAkx3bsNQC6tBk4t5FhyfwjM"
+)
+YAHOO_CRUMB = "75kxC0BSq7bTHCD/60yaQ"
+YAHOO_ACRUMB = "JK0QUN1R"
+YAHOO_SESSION_INDEX = "QQ--"
+
+
 async def yahoo(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
 
-    yahooURL = "https://login.yahoo.com:443/account/module/create?validateField=yid"
-    yahooCookies = {"B": "10kh9jteu3edn&b=3&s=66", "AS": "v=1&s=wy5fFM96"}  # 13 8
-    # yahooCookies = {"B": "{}&b=3&s=66".format(randstr(13)), "AS": "v=1&s={}".format(randstr(8))} # 13 8
-    headers = {"User-Agent": random.choice(uaLst),
-               "Accept": "*/*", "Accept-Language": "en-US,en;q=0.5", "Accept-Encoding": "gzip, deflate",
-               "Referer": "https://login.yahoo.com/account/create?.src=ym&.lang=en-US&.intl=us&.done=https%3A%2F%2Fmail.yahoo.com%2Fd&authMechanism=primary&specId=yidReg",
-               "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest",
-               "DNT": "1", "Connection": "close"}
-
-    # yahooPOST = {"specId": "yidReg", "crumb": randstr(11), "acrumb": randstr(8), "yid": target} # crumb: 11, acrumb: 8
-    yahooPOST = {"specId": "yidReg", "crumb": "bshN8x9qmfJ", "acrumb": "wy5fFM96", "yid": target}
+    yahooURL = "https://login.yahoo.com/account/create/validate?validateField=userId"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://login.yahoo.com",
+        "Referer": "https://login.yahoo.com/account/create",
+        "X-Requested-With": "XMLHttpRequest",
+        "Cookie": YAHOO_COOKIE,
+    }
+    data = {
+        "sessionIndex": YAHOO_SESSION_INDEX,
+        "acrumb": YAHOO_ACRUMB,
+        "crumb": YAHOO_CRUMB,
+        "specId": "yidregsimplified",
+        "context": "REGISTRATION",
+        "attrSetIndex": "0",
+        "tos0": "oath_freereg|nl|nl-NL",
+        "lastName": "r",
+        "yidDomain": "yahoo.com",
+        "userId": target,
+    }
     sreq = req_session_fun()
 
     try:
-        yahooChk = await sreq.post(yahooURL, headers=headers, cookies=yahooCookies, data=yahooPOST, timeout=kwargs.get('timeout', 5))
-
-        body = await yahooChk.text()
-        if '"IDENTIFIER_EXISTS"' in body:
-            result["Yahoo"] = f"{target}@yahoo.com"
-
+        yahooChk = await sreq.post(yahooURL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
+        async with yahooChk:
+            if yahooChk.status == 200:
+                resp = await yahooChk.json(content_type=None)
+                err = resp.get("fields", {}).get("userId", {}).get("error", {})
+                if err and err.get("id") == "IDENTIFIER_NOT_AVAILABLE":
+                    result["Yahoo"] = f"{target}@yahoo.com"
     except Exception as e:
         logger.error(e, exc_info=True)
 
@@ -468,52 +499,76 @@ async def yahoo(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
+async def _launch_headless():
+    """Launch a headless Chromium instance with anti-fingerprinting flags.
+    Caller is responsible for closing it."""
+    from pyppeteer import launch
+    return await launch(headless=True, handleSIGINT=False, handleSIGTERM=False, handleSIGHUP=False,
+                        args=['--no-sandbox', '--disable-blink-features=AutomationControlled'])
+
+
+def _is_chromium_error(err_str: str) -> bool:
+    return any(kw in err_str.lower() for kw in _CHROMIUM_ERROR_KEYWORDS)
+
+
 async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
-    result = {}
-    liveSucc = []
-    sreq = AsyncHTMLSession()
-    _open_sessions.append(sreq)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Priority": "u=0, i",
-        "Pragma": "no-cache",
-        "Cache-Control": "no-cache"
-    }
+    """Check outlook.com / hotmail.com by submitting the email through the live
+    signup form in headless Chromium and inspecting the JSON response from
+    /API/CheckAvailableSigninNames. The endpoint sets `isAvailable: false`
+    when the address is taken."""
+    result: Dict[str, List[str]] = {}
     liveLst = ["outlook.com", "hotmail.com"]
-    url_template = 'https://signup.live.com/?username={}%40{}&lic=1'
 
     print('[INFO] Outlook check uses Chromium (pyppeteer). '
           'On first run this downloads Chromium (~150 MB) which may take a while...')
 
-    for maildomain in liveLst:
-        try:
-            liveChk = await sreq.get(url_template.format(target, maildomain), headers=headers)
-            await liveChk.html.arender(sleep=1)
+    browser = None
+    try:
+        browser = await _launch_headless()
+        page = await browser.newPage()
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36')
+        captured: Dict[str, Any] = {}
 
-            if "Someone already has this email address" in liveChk.html.html:
-                liveSucc.append(f"{target}@{maildomain}")
+        async def on_response(r):
+            if 'CheckAvailableSigninNames' in r.url:
+                try:
+                    captured['body'] = await r.json()
+                except Exception:
+                    pass
 
-        except Exception as e:
-            err_str = str(e)
-            if any(kw in err_str.lower() for kw in _CHROMIUM_ERROR_KEYWORDS):
-                print(f'[WARNING] Outlook/{maildomain} check failed: Chromium/browser issue detected '
-                      f'({err_str[:200]}). '
-                      f'Ensure pyppeteer can download Chromium or increase the timeout with -t.')
-            else:
-                print(f'[WARNING] Outlook/{maildomain} check failed: {err_str[:200]}')
-            logger.error(e, exc_info=True)
+        page.on('response', lambda r: asyncio.ensure_future(on_response(r)))
 
-    if liveSucc:
-        result["Live"] = liveSucc
+        liveSucc = []
+        for maildomain in liveLst:
+            email = f"{target}@{maildomain}"
+            captured.clear()
+            await page.goto('https://signup.live.com/', {'waitUntil': 'networkidle2', 'timeout': 30000})
+            await page.waitForSelector('input[name=email]', {'timeout': 8000})
+            await page.evaluate('document.querySelector("input[name=email]").value = ""')
+            await page.type('input[name=email]', email, {'delay': 40})
+            await page.click('button[type=submit]')
+            for _ in range(20):
+                await asyncio.sleep(0.5)
+                if 'body' in captured:
+                    break
+            body = captured.get('body')
+            if isinstance(body, dict) and body.get('isAvailable') is False:
+                liveSucc.append(email)
 
-    await sreq.close()
+        if liveSucc:
+            result["Live"] = liveSucc
+    except Exception as e:
+        err_str = str(e)
+        if _is_chromium_error(err_str):
+            print(f'[WARNING] Outlook check failed: Chromium/browser issue detected '
+                  f'({err_str[:200]}). Ensure pyppeteer can download Chromium.')
+        else:
+            print(f'[WARNING] Outlook check failed: {err_str[:200]}')
+        logger.error(e, exc_info=True)
+    finally:
+        if browser is not None:
+            await browser.close()
 
     return result
 
@@ -539,7 +594,8 @@ async def zoho(target, req_session_fun, *args, **kwargs) -> Dict:
                 # if "IAM.ERROR.USERNAME.NOT.AVAILABLE" in zohoChk.text:
                 #    print("[+] Success with {}@zohomail.com".format(target))
                 resp = await zohoChk.json()
-                if resp['error']['username'] == 'This username is taken':
+                username_err = resp.get('error', {}).get('username', '')
+                if username_err == 'This username is taken' or 'already registered' in username_err:
                     result["Zoho"] = f"{target}@zohomail.com"
                                     # print("[+] Success with {}@zohomail.com".format(target))
     except Exception as e:
@@ -598,24 +654,24 @@ async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:  # high ban
                'Referer': 'https://www.eclipso.eu/signup/tariff-5',
                'X-Requested-With': 'XMLHttpRequest'}
     sreq = req_session_fun()
+    timeout = kwargs.get('timeout', 5)
 
-    for maildomain in eclipsoLst:
+    async def check_one(maildomain):
+        targetMail = f"{target}@{maildomain}"
+        eclipsoURL = f"https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={targetMail}"
         try:
-            targetMail = f"{target}@{maildomain}"
-
-            eclipsoURL = f"https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={targetMail}"
-
-            chkEclipso = await sreq.get(eclipsoURL, headers=headers, timeout=kwargs.get('timeout', 5))
-
+            chkEclipso = await sreq.get(eclipsoURL, headers=headers, timeout=timeout)
             async with chkEclipso:
                 if chkEclipso.status == 200:
                     resp = await chkEclipso.text()
                     if '>0<' in resp:
-                        eclipsoSucc.append(targetMail)
+                        return targetMail
         except Exception as e:
             logger.error(e, exc_info=True)
+        return None
 
-        await asyncio.sleep(random.uniform(2, 4))
+    checked = await asyncio.gather(*(check_one(d) for d in eclipsoLst))
+    eclipsoSucc = [m for m in checked if m]
 
     if eclipsoSucc:
         result["Eclipso"] = eclipsoSucc
@@ -656,7 +712,16 @@ async def posteo(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
+# DEPRECATED — not in CHECKERS.
+# Why: /ajax 301-redirects to pricing. The actual username-check endpoint
+# `/registration/stepThree/accountExists` can only be reached by completing
+# step 1 (real recovery email + password) and step 2 (plan + payment-method).
+# Step 1 has no XHR availability check, so even via headless we can't reach
+# step 3 without submitting a complete signup with a working recovery email.
+# How to revive: automate filling steps 1+2 through a throwaway recovery
+# inbox (e.g. a temporary mailbox), then capture the step 3 XHR.
 async def mailbox(target, req_session_fun, *args, **kwargs) -> Dict:  # tor RU
+    print('[DEPRECATED] mailbox is unmaintained — multi-step form blocks the username check. See comment in mailcat.py.')
     result = {}
 
     mailboxURL = "https://register.mailbox.org:443/ajax"
@@ -720,89 +785,84 @@ async def firemail(target, req_session_fun, *args, **kwargs) -> Dict:  # tor RU
     return result
 
 
-async def fastmail(target, req_session_fun, *args, **kwargs) -> Dict:  # sanctions against Russia) TOR + 4 min for check in loop(
-    result = {}
-
-    # Registration form on fastmail website automatically lowercase all input.
-    # If uppercase letters are used false positive results are returned.
+async def fastmail(target, req_session_fun, *args, **kwargs) -> Dict:
+    """Drive www.fastmail.com/signup/ in headless Chromium, type the username
+    into the signup form, and capture the JMAP `/signup/api` response. The
+    request body includes a JS-generated `talon` anti-bot token which is why
+    the old direct-curl path now returns JMAP capabilities instead of a
+    real response. Only checks fastmail.com (the primary domain) — the
+    legacy alias-domain list (sent.com, fastmail.fm, etc.) shares the same
+    JMAP backend, but iterating each one through the form is too slow."""
     target = target.lower()
+    if not re.search(r'^[a-zA-Z]\w{2,40}$', target, re.ASCII):
+        return {}
 
-    # validate target syntax to prevent false positive results
-    match = re.search(r'^[a-zA-Z]\w{2,40}$', target, re.ASCII)
+    result: Dict[str, Any] = {}
 
-    if not match:
-        return result
+    print('[INFO] Fastmail check uses Chromium (pyppeteer). '
+          'On first run this downloads Chromium (~150 MB) which may take a while...')
 
-    fastmailSucc = []
+    browser = None
+    try:
+        browser = await _launch_headless()
+        page = await browser.newPage()
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36')
 
-    fastmailLst = [
-        "fastmail.com", "fastmail.cn", "fastmail.co.uk", "fastmail.com.au",
-        "fastmail.de", "fastmail.es", "fastmail.fm", "fastmail.fr",
-        "fastmail.im", "fastmail.in", "fastmail.jp", "fastmail.mx",
-        "fastmail.net", "fastmail.nl", "fastmail.org", "fastmail.se",
-        "fastmail.to", "fastmail.tw", "fastmail.uk", "fastmail.us",
-        "123mail.org", "airpost.net", "eml.cc", "fmail.co.uk",
-        "fmgirl.com", "fmguy.com", "mailbolt.com", "mailcan.com",
-        "mailhaven.com", "mailmight.com", "ml1.net", "mm.st",
-        "myfastmail.com", "proinbox.com", "promessage.com", "rushpost.com",
-        "sent.as", "sent.at", "sent.com", "speedymail.org",
-        "warpmail.net", "xsmail.com", "150mail.com", "150ml.com",
-        "16mail.com", "2-mail.com", "4email.net", "50mail.com",
-        "allmail.net", "bestmail.us", "cluemail.com", "elitemail.org",
-        "emailcorner.net", "emailengine.net", "emailengine.org", "emailgroups.net",
-        "emailplus.org", "emailuser.net", "f-m.fm", "fast-email.com",
-        "fast-mail.org", "fastem.com", "fastemail.us", "fastemailer.com",
-        "fastest.cc", "fastimap.com", "fastmailbox.net", "fastmessaging.com",
-        "fea.st", "fmailbox.com", "ftml.net", "h-mail.us",
-        "hailmail.net", "imap-mail.com", "imap.cc", "imapmail.org",
-        "inoutbox.com", "internet-e-mail.com", "internet-mail.org",
-        "internetemails.net", "internetmailing.net", "jetemail.net",
-        "justemail.net", "letterboxes.org", "mail-central.com", "mail-page.com",
-        "mailandftp.com", "mailas.com", "mailc.net", "mailforce.net",
-        "mailftp.com", "mailingaddress.org", "mailite.com", "mailnew.com",
-        "mailsent.net", "mailservice.ms", "mailup.net", "mailworks.org",
-        "mymacmail.com", "nospammail.net", "ownmail.net", "petml.com",
-        "postinbox.com", "postpro.net", "realemail.net", "reallyfast.biz",
-        "reallyfast.info", "speedpost.net", "ssl-mail.com", "swift-mail.com",
-        "the-fastest.net", "the-quickest.com", "theinternetemail.com",
-        "veryfast.biz", "veryspeedy.net", "yepmail.net", "your-mail.com"]
+        captured: Dict[str, Any] = {}
 
-    headers = {"User-Agent": random.choice(uaLst),
-               "Referer": "https://www.fastmail.com/signup/",
-               "Content-type": "application/json",
-               "X-TrustedClient": "Yes",
-               "Origin": "https://www.fastmail.com"}
+        async def on_response(r):
+            if 'signup/api' in r.url and r.request.method == 'POST':
+                try:
+                    body = await r.json()
+                    method_responses = body.get('methodResponses', [])
+                    for mr in method_responses:
+                        if mr and mr[0] == 'Signup/getEmailAvailability':
+                            captured['response'] = mr[1]
+                            break
+                except Exception:
+                    pass
 
-    fastmailURL = "https://www.fastmail.com:443/jmap/setup/"
-    sreq = req_session_fun()
+        page.on('response', lambda r: asyncio.ensure_future(on_response(r)))
 
-    for fmdomain in fastmailLst:
-        # print(fastmailLst.index(fmdomain)+1, fmdomain)
+        await page.goto('https://www.fastmail.com/signup/', {'waitUntil': 'networkidle2', 'timeout': 30000})
+        await asyncio.sleep(2)
+        # The username input has no `name` attribute — pick it as the only visible
+        # text input without one.
+        typed = await page.evaluate('''(val) => {
+            const inps = Array.from(document.querySelectorAll("input[type=text]"))
+                .filter(el => !el.name && el.offsetParent !== null);
+            if (!inps.length) return false;
+            const inp = inps[0];
+            inp.focus();
+            inp.value = val;
+            inp.dispatchEvent(new Event("input", {bubbles: true}));
+            inp.dispatchEvent(new Event("change", {bubbles: true}));
+            inp.blur();
+            return true;
+        }''', target)
+        if not typed:
+            return result
 
-        fmmail = f"{target}@{fmdomain}"
+        for _ in range(20):
+            await asyncio.sleep(0.5)
+            if 'response' in captured:
+                break
 
-        fastmailJSON = {"methodCalls": [["Signup/getEmailAvailability", {"email": fmmail}, "0"]],
-                        "using": ["https://www.fastmail.com/dev/signup"]}
-
-        try:
-            chkFastmail = await sreq.post(fastmailURL, headers=headers, json=fastmailJSON, timeout=kwargs.get('timeout', 5))
-
-            async with chkFastmail:
-                if chkFastmail.status == 200:
-                    resp = await chkFastmail.json()
-                    fmJson = resp['methodResponses'][0][1]['isAvailable']
-                    if fmJson is False:
-                        fastmailSucc.append(f"{fmmail}")
-
-        except Exception as e:
-            logger.error(e, exc_info=True)
-
-        await asyncio.sleep(random.uniform(0.5, 1.1))
-
-    if fastmailSucc:
-        result["Fastmail"] = fastmailSucc
-
-    await sreq.close()
+        body = captured.get('response')
+        if isinstance(body, dict) and body.get('isAvailable') is False:
+            email = body.get('email') or f'{target}@fastmail.com'
+            result["Fastmail"] = email
+    except Exception as e:
+        err_str = str(e)
+        if _is_chromium_error(err_str):
+            print(f'[WARNING] Fastmail check failed: Chromium/browser issue ({err_str[:200]}).')
+        else:
+            print(f'[WARNING] Fastmail check failed: {err_str[:200]}')
+        logger.error(e, exc_info=True)
+    finally:
+        if browser is not None:
+            await browser.close()
 
     return result
 
@@ -994,7 +1054,14 @@ async def bigmir(target, req_session_fun, *args, **kwargs) -> Dict:
 
 
 
+# DEPRECATED — not in CHECKERS.
+# Why: /app/signup/checkusername now sits behind HTTP Basic auth
+# ("Restricted Access for Signup") and returns 401 to unauthenticated
+# callers.
+# How to revive: discover the Basic-auth credentials (likely embedded
+# somewhere in the live signup JS bundle) and pass them as the auth tuple.
 async def xmail(target, req_session_fun, *args, **kwargs) -> Dict:
+    print('[DEPRECATED] xmail is unmaintained — endpoint now requires HTTP Basic auth. See comment in mailcat.py.')
     result = {}
 
     sreq = req_session_fun()
@@ -1105,28 +1172,28 @@ async def runbox(target, req_session_fun, *args, **kwargs) -> Dict:
                "Referer": "https://runbox.com/signup?runbox7=1"}
 
     sreq = req_session_fun()
-    for rboxdomain in runboxLst:
+    timeout = kwargs.get('timeout', 5)
+
+    async def check_one(rboxdomain):
+        data = {"type": "person", "company": "", "first_name": "", "last_name": "", "user": target,
+                "userdomain": "domainyouown.com", "runboxDomain": rboxdomain, "password": "",
+                "password_strength": "", "email_alternative": "", "phone_number_cellular": "",
+                "referrer": "", "phone_number_home": "", "g-recaptcha-response": "",
+                "h-captcha-response": "", "signup": "%A0Set+up+my+Runbox+account%A0",
+                "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
+                "account_number": "", "timezone": "undefined", "runbox7": "1"}
         try:
-            data = {"type": "person", "company": "", "first_name": "", "last_name": "", "user": target,
-                    "userdomain": "domainyouown.com", "runboxDomain": rboxdomain, "password": "",
-                    "password_strength": "", "email_alternative": "", "phone_number_cellular": "",
-                    "referrer": "", "phone_number_home": "", "g-recaptcha-response": "",
-                    "h-captcha-response": "", "signup": "%A0Set+up+my+Runbox+account%A0",
-                    "av": "y", "as": "y", "domain": "", "accountType": "person", "domainType": "runbox",
-                    "account_number": "", "timezone": "undefined", "runbox7": "1"}
-
-            chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=kwargs.get('timeout', 5))
-
+            chkRunbox = await sreq.post('https://runbox.com/signup/signup', headers=headers, data=data, timeout=timeout)
             if chkRunbox.status == 200:
                 resp = await chkRunbox.text()
                 if "The specified username is already taken" in resp:
-                    runboxSucc.append(f"{target}@{rboxdomain}")
-
+                    return f"{target}@{rboxdomain}"
         except Exception as e:
             logger.error(e, exc_info=True)
+        return None
 
-        finally:
-            await asyncio.sleep(random.uniform(1, 2.1))
+    checked = await asyncio.gather(*(check_one(d) for d in runboxLst))
+    runboxSucc = [m for m in checked if m]
 
     if runboxSucc:
         result["Runbox"] = runboxSucc
@@ -1136,7 +1203,14 @@ async def runbox(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
+# DEPRECATED — not in CHECKERS.
+# Why: Apple's old endpoint /password/verify/appleid now returns HTTP 403
+# unconditionally and the surrounding /getstarted flow was redesigned.
+# How to revive: reverse-engineer the new iforgot widget (it involves
+# anti-bot tokens issued by Apple's CDN) — likely needs headless Chromium
+# to harvest those tokens.
 async def iCloud(target, req_session_fun, *args, **kwargs) -> Dict:
+    print('[DEPRECATED] iCloud is unmaintained — Apple endpoint changed and now returns 403. See comment in mailcat.py.')
     result: Dict[str, List] = {}
 
     domains = [
@@ -1208,45 +1282,16 @@ async def duckgo(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
-async def ctemplar(target, req_session_fun, *args, **kwargs) -> Dict:
-
-    result = {}
-
-    # validate target syntax to prevent false positive results (e.g. no dot at the end of target allowed)
-    match = re.search(r'^[a-zA-Z][\w\-.]{2,}[a-zA-Z\d]$', target)
-
-    if not match:
-        return result
-
-    sreq = req_session_fun()
-
-    ctURL = "https://api.ctemplar.com/auth/check-username/"
-    ctJSON = {"username": target}
-
-    headers = {"User-Agent": random.choice(uaLst),
-               "Accept": "application/json, text/plain, */*",
-               "Referer": "https://mail.ctemplar.com/",
-               "Content-Type": "application/json",
-               "Origin": "https://mail.ctemplar.com"}
-
-    try:
-        chkCT = await sreq.post(ctURL, headers=headers, json=ctJSON)
-
-        if chkCT.status == 200:
-            resp = await chkCT.json()
-            if resp['exists']:
-                result["CTemplar"] = f"{target}@ctemplar.com"
-
-    except Exception as e:
-        logger.error(e, exc_info=True)
-
-    await sreq.close()
-
-    return result
-
-
+# DEPRECATED — not in CHECKERS.
+# Why: the signup endpoint returns HTTP 500 "Unknown error" because the
+# hardcoded `form_token` is no longer accepted; Hushmail rotates the token
+# per page-load and the request also requires a fresh
+# `X-Hush-Ajax-Start-Time` paired with that token.
+# How to revive: GET /signup/ first, scrape `form_token` from the HTML,
+# pair it with a fresh timestamp, then POST.
 async def hushmail(target, req_session_fun, *args, **kwargs) -> Dict:
 
+    print('[DEPRECATED] hushmail is unmaintained — fixed form_token rejected with HTTP 500. See comment in mailcat.py.')
     result = {}
 
     hushDomains = ["hushmail.com", "hush.com", "therapyemail.com", "counselingmail.com", "therapysecure.com", "counselingsecure.com"]
@@ -1382,23 +1427,24 @@ async def aikq(target, req_session_fun, *args, **kwargs) -> Dict:
 
     headers = {'User-Agent': random.choice(uaLst)}
     sreq = req_session_fun()
+    timeout = kwargs.get('timeout', 5)
 
-    for maildomain in aikqLst:
+    async def check_one(maildomain):
+        targetMail = f"{target}@{maildomain}"
+        aikqUrl = f"https://www.aikq.de/index.php?action=checkAddressAvailability&address={targetMail}"
         try:
-            targetMail = f"{target}@{maildomain}"
-            aikqUrl = f"https://www.aikq.de/index.php?action=checkAddressAvailability&address={targetMail}"
-
-            chkAikq = await sreq.get(aikqUrl, headers=headers, timeout=kwargs.get('timeout', 5))
-
+            chkAikq = await sreq.get(aikqUrl, headers=headers, timeout=timeout)
             async with chkAikq:
                 if chkAikq.status == 200:
                     resp = await chkAikq.text()
                     if '>0<' in resp:
-                        aikqSucc.append(targetMail)
+                        return targetMail
         except Exception as e:
             logger.error(e, exc_info=True)
+        return None
 
-        await asyncio.sleep(random.uniform(2, 4))
+    checked = await asyncio.gather(*(check_one(d) for d in aikqLst))
+    aikqSucc = [m for m in checked if m]
 
     if aikqSucc:
         result["Aikq"] = aikqSucc
@@ -1446,7 +1492,15 @@ async def mailDe(target, req_session_fun, *args, **kwargs) -> Dict:
     await asyncio.sleep(0)
     return result, error
 
+# DEPRECATED — not in CHECKERS.
+# Why: WP signup migrated to a Next.js SPA at 1login.wp.pl that loads
+# Cloudflare Turnstile and reCAPTCHA before exposing the username field.
+# Submission requires a `tokenMultiUse` from the captcha. Headless Chromium
+# hits the Turnstile wall too.
+# How to revive: integrate a captcha-solver service (Turnstile + reCAPTCHA)
+# to mint `tokenMultiUse`, drive the SPA through headless and post.
 async def wp(target, req_session_fun, *args, **kwargs) -> Dict:
+    print('[DEPRECATED] wp is unmaintained — Cloudflare Turnstile + reCAPTCHA wall. See comment in mailcat.py.')
     result = {}
 
     wpURL = "https://poczta.wp.pl/api/v1/public/registration/accounts/availability"
@@ -1477,7 +1531,16 @@ async def wp(target, req_session_fun, *args, **kwargs) -> Dict:
 
     return result
 
+# DEPRECATED — not in CHECKERS.
+# Why: konto.gazeta.pl/konto/checkLogin returns 404 — the live signup form
+# (rejestracja.do) no longer exposes a JSON availability endpoint and
+# protects the final submit with hCaptcha + reCAPTCHA. Even via headless,
+# no XHR fires until the captcha is solved.
+# How to revive: integrate a captcha-solver to clear hCaptcha + reCAPTCHA,
+# then full-submit the form and inspect the response page for the
+# "login already taken" inline error.
 async def gazeta(target, req_session_fun, *args, **kwargs) -> Dict:
+    print('[DEPRECATED] gazeta is unmaintained — no public API + captcha wall. See comment in mailcat.py.')
     result = {}
 
     gazetaURL = f"https://konto.gazeta.pl/konto/checkLogin?login={target}&nosuggestions=true"
@@ -1505,37 +1568,69 @@ async def gazeta(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 async def intpl(target, req_session_fun, *args, **kwargs) -> Dict:
-    result = {}
+    """Drive the int.pl registration form (#/register) in headless Chromium —
+    the /v1/user/checkEmail endpoint blocks unauthenticated direct calls with
+    HTTP 429, but inside a real browser session it accepts the blur-triggered
+    XHR. Response shape: {"result":{"data":{"login":0}}} when the login is
+    taken, login==1 when free."""
+    result: Dict[str, Any] = {}
 
-    intURL = "https://int.pl/v1/user/checkEmail"
-    headers = {
-        "User-Agent": random.choice(uaLst),
-        "Origin": "https://int.pl",
-        "Referer": "https://int.pl/",
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
-    }
+    print('[INFO] int.pl check uses Chromium (pyppeteer). '
+          'On first run this downloads Chromium (~150 MB) which may take a while...')
 
-    data = f"login={target}&subdomain=&domain=int.pl"
-
-    sreq = req_session_fun()
-
+    browser = None
     try:
-        intChk = await sreq.post(intURL, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
+        browser = await _launch_headless()
+        page = await browser.newPage()
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36')
+        captured: Dict[str, Any] = {}
 
-        body = await intChk.json(content_type=None)
+        async def on_response(r):
+            if 'checkEmail' in r.url:
+                try:
+                    captured['body'] = await r.json()
+                except Exception:
+                    pass
 
-        if body["result"]["data"]["login"] == 0:
-            result["int.pl"] = f"{target}@int.pl"
+        page.on('response', lambda r: asyncio.ensure_future(on_response(r)))
 
+        await page.goto('https://int.pl/#/register', {'waitUntil': 'networkidle2', 'timeout': 30000})
+        await page.waitForSelector('input[name=login]', {'timeout': 8000})
+        await page.evaluate('document.querySelector("input[name=login]").value = ""')
+        await page.evaluate('document.querySelector("input[name=login]").focus()')
+        await page.type('input[name=login]', target, {'delay': 60})
+        await page.evaluate('document.querySelector("input[name=login]").blur()')
+        for _ in range(16):
+            await asyncio.sleep(0.5)
+            if 'body' in captured:
+                break
+
+        body = captured.get('body')
+        if isinstance(body, dict):
+            login_status = body.get('result', {}).get('data', {}).get('login')
+            if login_status == 0:
+                result["int.pl"] = f"{target}@int.pl"
     except Exception as e:
+        err_str = str(e)
+        if _is_chromium_error(err_str):
+            print(f'[WARNING] int.pl check failed: Chromium/browser issue detected ({err_str[:200]}).')
+        else:
+            print(f'[WARNING] int.pl check failed: {err_str[:200]}')
         logger.error(e, exc_info=True)
-
-    await sreq.close()
+    finally:
+        if browser is not None:
+            await browser.close()
 
     return result
 
+# DEPRECATED — not in CHECKERS.
+# Why: o2.pl signup is hosted on the same WP-managed 1login.wp.pl SPA and
+# therefore inherits the same Cloudflare Turnstile + reCAPTCHA wall. See
+# `wp()` above.
+# How to revive: same path as wp().
 async def o2(target, req_session_fun, *args, **kwargs) -> Dict:
+    print('[DEPRECATED] o2 is unmaintained — Cloudflare Turnstile + reCAPTCHA wall. See comment in mailcat.py.')
     result = {}
 
     o2URL = "https://poczta.o2.pl/api/v1/public/registration/accounts/availability"
@@ -1592,24 +1687,28 @@ async def interia(target, req_session_fun, *args, **kwargs) -> Dict:
     }
 
     sreq = req_session_fun()
+    timeout = kwargs.get('timeout', 5)
+    interiaUrl = "https://konto-pocztowe.interia.pl/odzyskiwanie-dostepu/sms"
 
-    for maildomain in interiaLst:
+    async def check_one(maildomain):
+        targetMail = f"{target}@{maildomain}"
+        data = f'{{"email":"{targetMail}"}}'
         try:
-            targetMail = f"{target}@{maildomain}"
-            data = f'{{"email":"{targetMail}"}}'
-
-            interiaUrl = "https://konto-pocztowe.interia.pl/odzyskiwanie-dostepu/sms"
-            chkInteria = await sreq.post(interiaUrl, headers=headers, data=data, timeout=kwargs.get('timeout', 5))
-
+            chkInteria = await sreq.post(interiaUrl, headers=headers, data=data, timeout=timeout)
             async with chkInteria:
-                if chkInteria.status == 404:
+                # 200 = SMS-recovery flow accepted → user exists.
+                # 404 with "Użytkownik nie istnieje w systemie" = user doesn't exist.
+                # 422 = invalid email (rate-limited / domain not recognised).
+                if chkInteria.status == 200:
                     resp = await chkInteria.json(content_type=None)
-                    if resp["data"]["message"] == "Użytkownik nie istnieje w systemie":
-                        interiaSucc.append(targetMail)
+                    if resp.get("status") == "success":
+                        return targetMail
         except Exception as e:
             logger.error(e, exc_info=True)
+        return None
 
-        await asyncio.sleep(random.uniform(2, 4))
+    checked = await asyncio.gather(*(check_one(d) for d in interiaLst))
+    interiaSucc = [m for m in checked if m]
 
     if interiaSucc:
         result["Interia"] = interiaSucc
@@ -1658,62 +1757,81 @@ async def tpl(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 async def onet(target, req_session_fun, *args, **kwargs) -> Dict:
-    result = {}
-    onetSucc = []
+    """Drive konto.onet.pl/register in headless Chromium, type the alias into
+    the signup form, click "DALEJ" and capture the response from
+    /newapi/oauth/check-register-email-identity. The endpoint requires a
+    captcha_response which the page generates from a JS challenge —
+    /api/v1/oauth/captcha is invisible to direct curl callers. The response
+    payload `{"emails":[...]}` is empty for usernames already taken across
+    all 16 onet domains, and contains the full list of free addresses
+    otherwise."""
+    result: Dict[str, Any] = {}
+    onetLst = ["onet.pl", "op.pl", "adres.pl", "vp.pl", "onet.eu",
+               "cyberia.pl", "pseudonim.pl", "autograf.pl", "opoczta.pl",
+               "spoko.pl", "amorki.pl", "buziaczek.pl", "poczta.onet.pl",
+               "poczta.onet.eu", "onet.com.pl", "vip.onet.pl"]
 
-    onetLst = ["onet.pl",
-                "op.pl",
-                "adres.pl",
-                "vp.pl",
-                "onet.eu",
-                "cyberia.pl",
-                "pseudonim.pl",
-                "autograf.pl",
-                "opoczta.pl",
-                "spoko.pl",
-                "amorki.pl",
-                "buziaczek.pl",
-                "poczta.onet.pl",
-                "poczta.onet.eu",
-                "onet.com.pl",
-                "vip.onet.pl"]
+    print('[INFO] Onet check uses Chromium (pyppeteer). '
+          'On first run this downloads Chromium (~150 MB) which may take a while...')
 
-
-    headers = {
-        "User-Agent": random.choice(uaLst),
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Referer": "https://konto.onet.pl/"
-        }
-
-    data = {
-        "login": target,
-        "captcha_response":"meow",
-        "state":"https://poczta.onet.pl/"
-        }
-
-    onetUrl = "https://konto.onet.pl/newapi/oauth/check-register-email-identity"
-
-    sreq = req_session_fun()
+    browser = None
     try:
-        chkOnet = await sreq.post(onetUrl, headers=headers, data=json.dumps(data), timeout=kwargs.get('timeout', 5))
+        browser = await _launch_headless()
+        page = await browser.newPage()
+        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36')
 
-        async with chkOnet:
-            if chkOnet.status == 200:
-                body = await chkOnet.json(content_type=None)
+        captured: Dict[str, Any] = {}
 
-                for maildomain in onetLst:
-                    targetMail = f"{target}@{maildomain}"
-                    if targetMail not in body["emails"]:
-                        onetSucc.append(targetMail) 
+        async def on_response(r):
+            if 'check-register-email-identity' in r.url:
+                try:
+                    captured['body'] = await r.json()
+                except Exception:
+                    pass
 
+        page.on('response', lambda r: asyncio.ensure_future(on_response(r)))
+
+        await page.goto('https://konto.onet.pl/register', {'waitUntil': 'networkidle2', 'timeout': 30000})
+        await asyncio.sleep(2)
+        # Pick "create new mail" radio
+        try:
+            await page.click('#with-inbox')
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+        await page.waitForSelector('#alias', {'timeout': 5000})
+        await page.evaluate('document.querySelector("#alias").value = ""')
+        await page.click('#alias')
+        await page.type('#alias', target, {'delay': 60})
+        await asyncio.sleep(0.5)
+        # Click "DALEJ" / Next
+        await page.evaluate('''() => {
+            const btns = Array.from(document.querySelectorAll("button"));
+            const target = btns.find(b => /dalej|next|kontynu/i.test(b.innerText || ""));
+            if (target) target.click();
+        }''')
+        for _ in range(20):
+            await asyncio.sleep(0.5)
+            if 'body' in captured:
+                break
+
+        body = captured.get('body')
+        if isinstance(body, dict):
+            emails = body.get('emails', [])
+            # Empty list = the alias is taken across all onet domains.
+            if not emails:
+                result["Onet"] = [f"{target}@{d}" for d in onetLst]
     except Exception as e:
+        err_str = str(e)
+        if _is_chromium_error(err_str):
+            print(f'[WARNING] Onet check failed: Chromium/browser issue ({err_str[:200]}).')
+        else:
+            print(f'[WARNING] Onet check failed: {err_str[:200]}')
         logger.error(e, exc_info=True)
-
-    if onetSucc:
-        result["Onet"] = onetSucc
-
-    await sreq.close()
+    finally:
+        if browser is not None:
+            await browser.close()
 
     return result
 
@@ -1806,16 +1924,27 @@ async def print_results(checker, target, req_session_fun, is_verbose_mode, timeo
     return {checker_name: res} if res else {checker_name: None}
 
 
+# Deprecated checkers (kept in source, marked with `# DEPRECATED` and a
+# `[DEPRECATED]` runtime warning above each function):
+#   iCloud   — Apple endpoint 403
+#   hushmail — fixed form_token rejected with 500
+#   xmail    — endpoint now requires HTTP Basic auth (401)
+#   tuta     — needs signupToken from hCaptcha
+#   mailbox  — multi-step form blocks the username check
+#   wp / o2  — Cloudflare Turnstile + reCAPTCHA wall
+#   gazeta   — no public API + final-submit captcha
+# Each function still runs if invoked explicitly via `-p <name>`, but it
+# emits a deprecation notice and almost always returns {}.
 CHECKERS = [gmail, yandex, proton, mailRu,
-            rambler, tuta, yahoo, outlook,
-            zoho, eclipso, posteo, mailbox,
+            rambler, yahoo, outlook,
+            zoho, eclipso, posteo,
             firemail, fastmail, startmail,
-            xmail, ukrnet, #bigmir,
-            runbox, iCloud, duckgo, hushmail,
-            ctemplar, aikq, emailn, vivaldi,
-            mailDe, wp, gazeta, intpl,
-            o2, interia, tpl, onet,
-            mailum]  # -kolab -lycos(false((( )
+            ukrnet,
+            runbox, duckgo,
+            aikq, emailn, vivaldi,
+            mailDe, intpl,
+            interia, tpl, onet,
+            mailum]
 
 async def start():
     parser = argparse.ArgumentParser(
