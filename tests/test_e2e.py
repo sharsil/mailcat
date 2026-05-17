@@ -103,6 +103,16 @@ async def test_eclipso_alex():
 
 @e2e
 @pytest.mark.asyncio
+async def test_eclipso_blocked_substring_no_false_positive():
+    """Regression guard for issue #23: usernames containing eclipso's blocked
+    substrings (host/mail/bot/sex/…) must NOT come back as taken."""
+    for blocked in ("host", "mailbot", "sexx"):
+        result = await mailcat.eclipso(blocked, mailcat.simple_session)
+        assert result == {}, f"{blocked!r} produced a false positive: {result!r}"
+
+
+@e2e
+@pytest.mark.asyncio
 async def test_startmail_alex():
     result = await mailcat.startmail("alex", mailcat.simple_session)
     assert result == {"StartMail": "alex@startmail.com"}

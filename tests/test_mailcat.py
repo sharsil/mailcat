@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -261,6 +262,82 @@ async def test_aol_signup_page_missing_tokens():
         signup_html="<html><body>no inputs here</body></html>",
     )
     result = await mailcat.aol("alex", session_fun)
+    assert result == {}
+
+
+# eclipso fans out 11 GETs (1 sentinel + 10 per-domain) and the verdict
+# depends on which one is which — needs a URL-aware mock.
+def make_eclipso_mock_session(text_by_address):
+    """text_by_address maps the `address=` query value to a marker.
+    "TAKEN" → <available>0</available>; missing key → <available>1</available>;
+    anything else is sent verbatim."""
+    default_avail = '<?xml version="1.0"?><response><available>1</available></response>'
+    taken_body = '<?xml version="1.0"?><response><available>0</available></response>'
+
+    def build_response(url, **kwargs):
+        m = re.search(r'address=([^&]+)', url)
+        addr = m.group(1) if m else ""
+        text = text_by_address.get(addr)
+        if text is None:
+            body = default_avail
+        elif text == "TAKEN":
+            body = taken_body
+        else:
+            body = text
+        resp = AsyncMock()
+        resp.status = 200
+        resp.text = AsyncMock(return_value=body)
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=False)
+        return resp
+
+    session = AsyncMock()
+    session.get = AsyncMock(side_effect=build_response)
+    session.close = AsyncMock()
+    session.cookie_jar = True
+    return lambda: session
+
+
+@pytest.mark.asyncio
+async def test_eclipso_blocked_substring_returns_empty():
+    """`host` is a blocked substring; sentinel `zzaahostaazz` would also come
+    back as `>0<`, so eclipso() must discard every per-domain hit."""
+    # Every probe (sentinel + 10 domains) returns "taken" — the substring filter.
+    session_fun = make_eclipso_mock_session({
+        "zzaahostaazz@eclipso.eu": "TAKEN",
+        "host@eclipso.eu": "TAKEN", "host@eclipso.de": "TAKEN",
+        "host@eclipso.at": "TAKEN", "host@eclipso.ch": "TAKEN",
+        "host@eclipso.be": "TAKEN", "host@eclipso.es": "TAKEN",
+        "host@eclipso.it": "TAKEN", "host@eclipso.me": "TAKEN",
+        "host@eclipso.nl": "TAKEN", "host@eclipso.email": "TAKEN",
+    })
+    result = await mailcat.eclipso("host", session_fun)
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_eclipso_real_account_keeps_hits():
+    """Real account: sentinel comes back available, but per-domain checks
+    return `taken` — every domain must end up in the result list."""
+    session_fun = make_eclipso_mock_session({
+        # Sentinel falls through to default (available) — only mark domains taken.
+        "alex@eclipso.eu": "TAKEN", "alex@eclipso.de": "TAKEN",
+        "alex@eclipso.at": "TAKEN", "alex@eclipso.ch": "TAKEN",
+        "alex@eclipso.be": "TAKEN", "alex@eclipso.es": "TAKEN",
+        "alex@eclipso.it": "TAKEN", "alex@eclipso.me": "TAKEN",
+        "alex@eclipso.nl": "TAKEN", "alex@eclipso.email": "TAKEN",
+    })
+    result = await mailcat.eclipso("alex", session_fun)
+    assert "Eclipso" in result
+    assert len(result["Eclipso"]) == 10
+    assert "alex@eclipso.eu" in result["Eclipso"]
+
+
+@pytest.mark.asyncio
+async def test_eclipso_available_target_returns_empty():
+    """Random username: sentinel + all domains available — nothing to report."""
+    session_fun = make_eclipso_mock_session({})  # all default to available
+    result = await mailcat.eclipso("f3h53h54hdrg9rkz", session_fun)
     assert result == {}
 
 

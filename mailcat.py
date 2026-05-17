@@ -719,10 +719,8 @@ async def lycos(target, req_session_fun, *args, **kwargs) -> Dict:
     return result
 
 
-async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:  # high ban risk + false positives after
+async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:
     result = {}
-
-    eclipsoSucc = []
 
     eclipsoLst = ["eclipso.eu",
                   "eclipso.de",
@@ -741,23 +739,36 @@ async def eclipso(target, req_session_fun, *args, **kwargs) -> Dict:  # high ban
     sreq = req_session_fun()
     timeout = kwargs.get('timeout', 5)
 
-    async def check_one(maildomain):
-        targetMail = f"{target}@{maildomain}"
-        eclipsoURL = f"https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={targetMail}"
+    # eclipso's checkAddressAvailability conflates "actually taken" with
+    # "contains a forbidden substring" (host/mail/bot/sex/admin/info/test/…)
+    # — both return <available>0</available>. To strip the false positives
+    # we first probe a sentinel that preserves the target as a substring;
+    # if the sentinel comes back unavailable the verdict is filter-driven,
+    # not ownership-driven, and the per-domain results can't be trusted.
+    # See https://github.com/sharsil/mailcat/issues/23.
+    sentinel = f"zzaa{target}aazz"
+
+    async def check_one(address):
+        url = f"https://www.eclipso.eu/index.php?action=checkAddressAvailability&address={address}"
         try:
-            chkEclipso = await sreq.get(eclipsoURL, headers=headers, timeout=timeout)
-            async with chkEclipso:
-                if chkEclipso.status == 200:
-                    resp = await chkEclipso.text()
-                    if '>0<' in resp:
-                        return targetMail
+            chk = await sreq.get(url, headers=headers, timeout=timeout)
+            async with chk:
+                if chk.status == 200:
+                    return await chk.text()
         except Exception as e:
             logger.error(e, exc_info=True)
         return None
 
-    checked = await asyncio.gather(*(check_one(d) for d in eclipsoLst))
-    eclipsoSucc = [m for m in checked if m]
+    addresses = [f"{sentinel}@eclipso.eu"] + [f"{target}@{d}" for d in eclipsoLst]
+    responses = await asyncio.gather(*(check_one(a) for a in addresses))
 
+    sentinel_resp, *domain_resps = responses
+    if sentinel_resp is None or '>0<' in sentinel_resp:
+        await sreq.close()
+        return result
+
+    eclipsoSucc = [addresses[i + 1] for i, resp in enumerate(domain_resps)
+                   if resp is not None and '>0<' in resp]
     if eclipsoSucc:
         result["Eclipso"] = eclipsoSucc
 
