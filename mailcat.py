@@ -596,64 +596,56 @@ def _is_chromium_error(err_str: str) -> bool:
     return any(kw in err_str.lower() for kw in _CHROMIUM_ERROR_KEYWORDS)
 
 
+# Microsoft Account (MSA) domains served by GetCredentialType. See
+# outlook_msa_check.md for the research. Endpoint is unauthenticated and
+# distinguishes existing MSA emails (IfExistsResult 0/5/6) from non-existent
+# ones (1) — much lighter than driving signup.live.com in headless Chromium.
+_MSA_DOMAINS = ["outlook.com", "hotmail.com", "live.com", "outlook.de", "msn.com"]
+_MSA_EXISTS_RESULTS = {0, 5, 6}
+
+
 async def outlook(target, req_session_fun, *args, **kwargs) -> Dict:
-    """Check outlook.com / hotmail.com by submitting the email through the live
-    signup form in headless Chromium and inspecting the JSON response from
-    /API/CheckAvailableSigninNames. The endpoint sets `isAvailable: false`
-    when the address is taken."""
+    """Check the canonical MSA domains via login.microsoftonline.com's
+    GetCredentialType endpoint. IfExistsResult 0/5/6 = email is registered as
+    an MSA, 1 = free, 4 = invalid format. ThrottleStatus != 0 means Microsoft
+    started rate-limiting our IP and the IfExistsResult is unreliable — treat
+    those as inconclusive (omit from the result)."""
     result: Dict[str, List[str]] = {}
-    liveLst = ["outlook.com", "hotmail.com"]
+    url = "https://login.microsoftonline.com/common/GetCredentialType"
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": random.choice(uaLst),
+        "Origin": "https://login.microsoftonline.com",
+        "Referer": "https://login.microsoftonline.com/",
+    }
+    timeout = kwargs.get('timeout', 5)
+    sreq = req_session_fun()
 
-    print('[INFO] Outlook check uses Chromium (pyppeteer). '
-          'On first run this downloads Chromium (~150 MB) which may take a while...')
+    async def check_one(domain: str):
+        email = f"{target}@{domain}"
+        payload = json.dumps({"Username": email, "isOtherIdpSupported": "true"})
+        try:
+            resp = await sreq.post(url, headers=headers, data=payload, timeout=timeout)
+            async with resp:
+                if resp.status != 200:
+                    return None
+                body = await resp.json(content_type=None)
+        except Exception as e:
+            logger.error(e, exc_info=True)
+            return None
+        if body.get("ThrottleStatus", 0) != 0:
+            return None
+        if body.get("IfExistsResult") in _MSA_EXISTS_RESULTS:
+            return email
+        return None
 
-    browser = None
     try:
-        browser = await _launch_headless()
-        page = await browser.newPage()
-        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36')
-        captured: Dict[str, Any] = {}
-
-        async def on_response(r):
-            if 'CheckAvailableSigninNames' in r.url:
-                try:
-                    captured['body'] = await r.json()
-                except Exception:
-                    pass
-
-        page.on('response', lambda r: asyncio.ensure_future(on_response(r)))
-
-        liveSucc = []
-        for maildomain in liveLst:
-            email = f"{target}@{maildomain}"
-            captured.clear()
-            await page.goto('https://signup.live.com/', {'waitUntil': 'networkidle2', 'timeout': 30000})
-            await page.waitForSelector('input[name=email]', {'timeout': 8000})
-            await page.evaluate('document.querySelector("input[name=email]").value = ""')
-            await page.type('input[name=email]', email, {'delay': 40})
-            await page.click('button[type=submit]')
-            for _ in range(20):
-                await asyncio.sleep(0.5)
-                if 'body' in captured:
-                    break
-            body = captured.get('body')
-            if isinstance(body, dict) and body.get('isAvailable') is False:
-                liveSucc.append(email)
-
-        if liveSucc:
-            result["Live"] = liveSucc
-    except Exception as e:
-        err_str = str(e)
-        if _is_chromium_error(err_str):
-            print(f'[WARNING] Outlook check failed: Chromium/browser issue detected '
-                  f'({err_str[:200]}). Ensure pyppeteer can download Chromium.')
-        else:
-            print(f'[WARNING] Outlook check failed: {err_str[:200]}')
-        logger.error(e, exc_info=True)
+        hits = await asyncio.gather(*(check_one(d) for d in _MSA_DOMAINS))
+        live_succ = [e for e in hits if e]
+        if live_succ:
+            result["Live"] = live_succ
     finally:
-        if browser is not None:
-            await browser.close()
+        await sreq.close()
 
     return result
 

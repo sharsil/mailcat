@@ -265,6 +265,94 @@ async def test_aol_signup_page_missing_tokens():
     assert result == {}
 
 
+# outlook() fans out 5 parallel POSTs to GetCredentialType, one per MSA domain;
+# verdict depends on which domains report IfExistsResult 0/5/6. The mock has to
+# read the JSON payload to know which email each call is checking.
+def make_msa_mock_session(result_by_email, throttle_by_email=None):
+    """result_by_email: maps full email → IfExistsResult (0/5/6 = exists, 1 = NA).
+    Missing keys default to 1 (does not exist).
+    throttle_by_email overrides ThrottleStatus (default 0)."""
+    throttle_by_email = throttle_by_email or {}
+
+    def build_response(url, *, data, **kwargs):
+        payload = json.loads(data)
+        email = payload["Username"]
+        body = {
+            "IfExistsResult": result_by_email.get(email, 1),
+            "ThrottleStatus": throttle_by_email.get(email, 0),
+        }
+        resp = AsyncMock()
+        resp.status = 200
+        resp.json = AsyncMock(return_value=body)
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=False)
+        return resp
+
+    session = AsyncMock()
+    session.post = AsyncMock(side_effect=build_response)
+    session.close = AsyncMock()
+    session.cookie_jar = True
+    return lambda: session
+
+
+@pytest.mark.asyncio
+async def test_outlook_found_on_one_domain():
+    """alex@outlook.com exists (IfExistsResult=5); others are free."""
+    session_fun = make_msa_mock_session({"alex@outlook.com": 5})
+    result = await mailcat.outlook("alex", session_fun)
+    assert result == {"Live": ["alex@outlook.com"]}
+
+
+@pytest.mark.asyncio
+async def test_outlook_found_on_multiple_domains():
+    """All five domains hit — every IfExistsResult variant (0/5/6) must register."""
+    session_fun = make_msa_mock_session({
+        "alex@outlook.com": 5,
+        "alex@hotmail.com": 5,
+        "alex@live.com": 6,    # exists in both personal and corporate
+        "alex@outlook.de": 0,  # corporate only
+        "alex@msn.com": 5,
+    })
+    result = await mailcat.outlook("alex", session_fun)
+    assert "Live" in result
+    assert set(result["Live"]) == {
+        "alex@outlook.com", "alex@hotmail.com", "alex@live.com",
+        "alex@outlook.de", "alex@msn.com",
+    }
+
+
+@pytest.mark.asyncio
+async def test_outlook_not_found_anywhere():
+    """No MSA domain has this username — return empty."""
+    session_fun = make_msa_mock_session({})
+    result = await mailcat.outlook("f3h53h54hdrg9rkz", session_fun)
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_outlook_throttle_treated_as_inconclusive():
+    """ThrottleStatus != 0 means IfExistsResult may be a false positive — skip
+    that domain rather than reporting it."""
+    session_fun = make_msa_mock_session(
+        result_by_email={
+            "alex@outlook.com": 5,   # would normally be reported
+            "alex@hotmail.com": 5,   # genuine hit
+        },
+        throttle_by_email={"alex@outlook.com": 1},
+    )
+    result = await mailcat.outlook("alex", session_fun)
+    # outlook.com is suppressed because of throttle; hotmail.com survives.
+    assert result == {"Live": ["alex@hotmail.com"]}
+
+
+@pytest.mark.asyncio
+async def test_outlook_invalid_format_not_reported():
+    """IfExistsResult=4 means Microsoft rejected the email format — not a hit."""
+    session_fun = make_msa_mock_session({"weird..name@outlook.com": 4})
+    result = await mailcat.outlook("weird..name", session_fun)
+    assert result == {}
+
+
 # eclipso fans out 11 GETs (1 sentinel + 10 per-domain) and the verdict
 # depends on which one is which — needs a URL-aware mock.
 def make_eclipso_mock_session(text_by_address):
@@ -691,38 +779,6 @@ async def test_executor_prints_warning_on_timeout(capsys):
     assert "slow_checker" in captured.out
     assert "timed out" in captured.out
     assert results == [None]
-
-
-@pytest.mark.asyncio
-async def test_outlook_prints_warning_on_chromium_error(capsys):
-    """outlook() should print a visible warning when Chromium fails to launch."""
-
-    async def boom():
-        raise Exception("Chromium revision is not downloaded")
-
-    with patch.object(mailcat, "_launch_headless", boom):
-        result = await mailcat.outlook("testuser", lambda: None)
-
-    captured = capsys.readouterr()
-    assert "[WARNING]" in captured.out
-    assert "chromium" in captured.out.lower()
-    assert result == {}
-
-
-@pytest.mark.asyncio
-async def test_outlook_prints_warning_on_generic_error(capsys):
-    """outlook() should print a visible warning for non-Chromium errors too."""
-
-    async def boom():
-        raise Exception("connection reset by peer")
-
-    with patch.object(mailcat, "_launch_headless", boom):
-        result = await mailcat.outlook("testuser", lambda: None)
-
-    captured = capsys.readouterr()
-    assert "[WARNING]" in captured.out
-    assert "Outlook" in captured.out
-    assert result == {}
 
 
 @pytest.mark.asyncio

@@ -56,7 +56,7 @@ When more than one username is resolved, a header is printed before each result 
 
 ## Supported providers
 
-**26 active providers covering > 155 domains** (plus ~50 Posteo alias domains).
+**26 active providers covering > 158 domains** (plus ~50 Posteo alias domains).
 Active checks run by default; deprecated checks remain in the source for revival
 but are skipped on a default run. See the comment block above each function in
 `mailcat.py` for the upstream change that broke it and notes on how to revive it.
@@ -70,7 +70,7 @@ but are skipped on a default run. See the comment block above each function in
 | Rambler     | rambler.ru + 5 other domains         | Registration      | Active     |
 | Yahoo       | yahoo.com                            | Registration      | Active     |
 | AOL         | aol.com                              | Registration      | Active     |
-| Outlook     | outlook.com, hotmail.com             | Headless Chromium | Active     |
+| Outlook     | outlook.com, hotmail.com, live.com, outlook.de, msn.com | MSA credential lookup | Active     |
 | Zoho        | zohomail.com                         | Registration      | Active     |
 | Eclipso     | eclipso.eu + 9 other domains         | Registration      | Active     |
 | Posteo      | posteo.net + ~50 aliases             | Registration      | Active     |
