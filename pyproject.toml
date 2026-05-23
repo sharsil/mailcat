@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mailcat-osint"
+version = "0.1.0"
+description = "The only cat who can find existing email addresses by nickname"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "sharsil" },
+    { name = "Soxoj", email = "soxoj@protonmail.com" },
+]
+maintainers = [
+    { name = "Soxoj", email = "soxoj@protonmail.com" },
+]
+keywords = ["email", "osint", "username", "mailcat", "account-search"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet",
+    "Topic :: Security",
+]
+dependencies = [
+    "aiohttp>=3.8",
+    "aiohttp-socks>=0.8",
+    "aiosmtplib>=2.0",
+    "dnspython>=2.0",
+    "lxml-html-clean>=0.1",
+    "requests-html>=0.10",
+    "tqdm>=4.60",
+]
+
+[project.urls]
+Homepage = "https://github.com/sharsil/mailcat"
+Repository = "https://github.com/sharsil/mailcat"
+Issues = "https://github.com/sharsil/mailcat/issues"
+
+[project.scripts]
+mailcat = "mailcat:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

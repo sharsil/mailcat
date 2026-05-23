@@ -2203,10 +2203,14 @@ async def start():
             pass
     _open_sessions.clear()
 
-if __name__ == '__main__':
+def main():
     try:
         asyncio.run(start())
     except KeyboardInterrupt:
         sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
 
 

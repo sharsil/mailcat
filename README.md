@@ -8,22 +8,34 @@
 
 The only cat who can find existing email addresses by nickname.
 
+## Install
+
+From PyPI (recommended):
+
+	pip install mailcat-osint
+
+From source:
+
+	git clone https://github.com/sharsil/mailcat
+	cd mailcat
+	pip install .
+
 ## Usage
 
-First install requirements:
-	
-	pip3 install -r requirements.txt
+Run it with a username:
 
-Then just run the script:
+	mailcat username
 
-	./mailcat.py username
+Or as a module:
 
-It's recommended to run script through Tor or a proxy — see [Routing through Tor](#routing-through-tor) below.
+	python -m mailcat username
 
-	./mailcat.py --tor username
-	proxychains4 -q python3 mailcat.py username
+It's recommended to run mailcat through Tor or a proxy — see [Routing through Tor](#routing-through-tor) below.
 
-	./mailcat.py username --proxy http://1.2.3.4:8080
+	mailcat --tor username
+	proxychains4 -q mailcat username
+
+	mailcat username --proxy http://1.2.3.4:8080
 
 ## Batch mode
 
@@ -31,11 +43,11 @@ You can check multiple usernames in one run.
 
 Pass several usernames as positional arguments:
 
-	./mailcat.py alice bob charlie
+	mailcat alice bob charlie
 
 Or supply a file with one username (or email address) per line:
 
-	./mailcat.py --file usernames.txt
+	mailcat --file usernames.txt
 
 File format example:
 
@@ -45,7 +57,7 @@ File format example:
 
 You can also combine both — positional names are merged with those from the file:
 
-	./mailcat.py alice --file more_users.txt
+	mailcat alice --file more_users.txt
 
 When more than one username is resolved, a header is printed before each result block so the output is easy to follow:
 
@@ -59,7 +71,8 @@ When more than one username is resolved, a header is printed before each result 
 **26 active providers covering > 158 domains** (plus ~50 Posteo alias domains).
 Active checks run by default; deprecated checks remain in the source for revival
 but are skipped on a default run. See the comment block above each function in
-`mailcat.py` for the upstream change that broke it and notes on how to revive it.
+`src/mailcat/__init__.py` for the upstream change that broke it and notes on how
+to revive it.
 
 | Name        | Domains                              | Method            | Status     |
 | ----------- | ------------------------------------ | ----------------- | ---------- |
@@ -121,10 +134,10 @@ when you run `tor` locally).
 	sudo systemctl start tor          # Linux with systemd
 
 	# 2. Run mailcat through Tor — SMTP checks now succeed
-	./mailcat.py alex --tor
+	mailcat alex --tor
 
 	# Or restrict to just the providers that need it
-	./mailcat.py alex --tor -p gmail -p yandex -p mailDe
+	mailcat alex --tor -p gmail -p yandex -p mailDe
 
 Tor adds ~5–15 s of latency per request, but it is the only reliable way
 to make the SMTP-25 checks work from a typical home or cloud environment.
