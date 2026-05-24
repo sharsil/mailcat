@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mailcat-osint"
-version = "0.1.0"
+version = "0.1.1"
 description = "The only cat who can find existing email addresses by nickname"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -26,22 +26,21 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet",
     "Topic :: Security",
 ]
 dependencies = [
-    "aiohttp>=3.8",
-    "aiohttp-socks>=0.8",
+    "aiohttp>=3.13.4",
+    "aiohttp-socks>=0.10",
     "aiosmtplib>=2.0",
-    "dnspython>=2.0",
-    "lxml-html-clean>=0.1",
+    "dnspython>=2.6.1",
+    "lxml-html-clean>=0.4.4",
     "requests-html>=0.10",
-    "tqdm>=4.60",
+    "tqdm>=4.66.3",
 ]
 
 [project.urls]
