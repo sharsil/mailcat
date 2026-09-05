@@ -523,8 +523,7 @@ async def aol(target, req_session_fun, *args, **kwargs) -> Dict:
 
     timeout = kwargs.get('timeout', 5)
     signup_url = "https://login.aol.com/account/create"
-    validate_url = ("https://login.aol.com/account/module/create"
-                    "?specId=yidregsimplified&validateField=userId")
+    validate_url = "https://login.aol.com/account/create/validate?validateField=userId"
     ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
     sreq = req_session_fun()
@@ -566,16 +565,12 @@ async def aol(target, req_session_fun, *args, **kwargs) -> Dict:
             if validate.status != 200:
                 return result
             resp = await validate.json(content_type=None)
-            for err in resp.get("errors", []):
-                if err.get("name") != "userId":
-                    continue
-                code = err.get("error", "")
-                # ERROR_<num> means the userId is already in use. RESERVED_WORD_PRESENT
-                # and LENGTH_TOO_SHORT mean the API refused the name for reasons other
-                # than ownership — treat both as inconclusive (no positive hit).
-                if code.startswith("ERROR_"):
-                    result["AOL"] = f"{target}@aol.com"
-                break
+            err = resp.get("fields", {}).get("userId", {}).get("error") or {}
+            # Only IDENTIFIER_EXISTS means someone already holds the name.
+            # RESERVED_WORD_PRESENT / LENGTH_TOO_SHORT / CANNOT_HAVE_MORE_THAN_ONE_PERIOD
+            # are refusals for other reasons — not a hit.
+            if err.get("id") == "IDENTIFIER_EXISTS":
+                result["AOL"] = f"{target}@aol.com"
     except Exception as e:
         logger.error(e, exc_info=True)
 
@@ -1844,15 +1839,22 @@ async def tpl(target, req_session_fun, *args, **kwargs) -> Dict:
 
     return result
 
+def _onet_taken(target: str, free_emails: List[str], domains: List[str]) -> List[str]:
+    """Onet answers with the addresses still free for an alias, so the taken ones
+    are whatever is left over. An alias free everywhere leaves nothing behind."""
+    free = {e.split('@', 1)[1] for e in free_emails if '@' in e}
+    return [f"{target}@{d}" for d in domains if d not in free]
+
+
 async def onet(target, req_session_fun, *args, **kwargs) -> Dict:
     """Drive konto.onet.pl/register in headless Chromium, type the alias into
     the signup form, click "DALEJ" and capture the response from
     /newapi/oauth/check-register-email-identity. The endpoint requires a
     captcha_response which the page generates from a JS challenge —
     /api/v1/oauth/captcha is invisible to direct curl callers. The response
-    payload `{"emails":[...]}` is empty for usernames already taken across
-    all 16 onet domains, and contains the full list of free addresses
-    otherwise."""
+    payload `{"emails":[...]}` lists the addresses still FREE for the alias:
+    all 16 for an unused alias, none at all for one taken everywhere. The
+    domains missing from it are the ones already registered."""
     result: Dict[str, Any] = {}
     onetLst = ["onet.pl", "op.pl", "adres.pl", "vp.pl", "onet.eu",
                "cyberia.pl", "pseudonim.pl", "autograf.pl", "opoczta.pl",
@@ -1906,10 +1908,9 @@ async def onet(target, req_session_fun, *args, **kwargs) -> Dict:
 
         body = captured.get('body')
         if isinstance(body, dict):
-            emails = body.get('emails', [])
-            # Empty list = the alias is taken across all onet domains.
-            if not emails:
-                result["Onet"] = [f"{target}@{d}" for d in onetLst]
+            taken = _onet_taken(target, body.get('emails', []), onetLst)
+            if taken:
+                result["Onet"] = taken
     except Exception as e:
         err_str = str(e)
         if _is_chromium_error(err_str):

@@ -223,12 +223,12 @@ def test_aol_extract_tokens_value_before_name():
 
 @pytest.mark.asyncio
 async def test_aol_found():
-    """ERROR_<num> on userId means the address is already in use."""
+    """IDENTIFIER_EXISTS on userId means the address is already in use."""
     session_fun = make_aol_mock_session(
-        validate_json={"errors": [
-            {"name": "firstName", "error": "FIELD_EMPTY"},
-            {"name": "userId", "error": "ERROR_148"},
-        ]},
+        validate_json={"fields": {
+            "firstName": {"error": None},
+            "userId": {"error": {"id": "IDENTIFIER_EXISTS"}},
+        }},
     )
     result = await mailcat.aol("alex", session_fun)
     assert result == {"AOL": "alex@aol.com"}
@@ -236,9 +236,9 @@ async def test_aol_found():
 
 @pytest.mark.asyncio
 async def test_aol_not_found():
-    """No userId entry in errors[] means the address is free."""
+    """A null error on userId means the address is free."""
     session_fun = make_aol_mock_session(
-        validate_json={"errors": [{"name": "firstName", "error": "FIELD_EMPTY"}]},
+        validate_json={"fields": {"userId": {"error": None}}},
     )
     result = await mailcat.aol("f3h53h54hdrg9rkz", session_fun)
     assert result == {}
@@ -248,7 +248,7 @@ async def test_aol_not_found():
 async def test_aol_reserved_word_treated_as_not_found():
     """RESERVED_WORD_PRESENT means AOL refuses the name but no one owns it."""
     session_fun = make_aol_mock_session(
-        validate_json={"errors": [{"name": "userId", "error": "RESERVED_WORD_PRESENT"}]},
+        validate_json={"fields": {"userId": {"error": {"id": "RESERVED_WORD_PRESENT"}}}},
     )
     result = await mailcat.aol("admin", session_fun)
     assert result == {}
@@ -258,7 +258,7 @@ async def test_aol_reserved_word_treated_as_not_found():
 async def test_aol_signup_page_missing_tokens():
     """If the signup form changes and we can't find crumb/acrumb/sessionIndex, bail."""
     session_fun = make_aol_mock_session(
-        validate_json={"errors": [{"name": "userId", "error": "ERROR_148"}]},
+        validate_json={"fields": {"userId": {"error": {"id": "IDENTIFIER_EXISTS"}}}},
         signup_html="<html><body>no inputs here</body></html>",
     )
     result = await mailcat.aol("alex", session_fun)
@@ -811,6 +811,36 @@ async def test_fastmail_prints_warning_on_chromium_error(capsys):
     assert "[WARNING]" in captured.out
     assert "chromium" in captured.out.lower()
     assert result == {}
+
+
+# Onet's /check-register-email-identity answers with the addresses still FREE for
+# an alias, so the taken ones are the leftovers. Real payloads observed live.
+_ONET_DOMAINS = ["onet.pl", "op.pl", "adres.pl", "vp.pl", "onet.eu",
+                 "cyberia.pl", "pseudonim.pl", "autograf.pl", "opoczta.pl",
+                 "spoko.pl", "amorki.pl", "buziaczek.pl", "poczta.onet.pl",
+                 "poczta.onet.eu", "onet.com.pl", "vip.onet.pl"]
+
+
+def test_onet_taken_free_alias_returns_nothing():
+    """An unused alias comes back free on every domain."""
+    free = [f"ghost@{d}" for d in _ONET_DOMAINS]
+    assert mailcat._onet_taken("ghost", free, _ONET_DOMAINS) == []
+
+
+def test_onet_taken_partial():
+    """alex is free on 6 domains, so the other 10 are registered."""
+    free = ["alex@adres.pl", "alex@vp.pl", "alex@onet.eu",
+            "alex@autograf.pl", "alex@amorki.pl", "alex@poczta.onet.pl"]
+    taken = mailcat._onet_taken("alex", free, _ONET_DOMAINS)
+    assert len(taken) == 10
+    assert "alex@op.pl" in taken
+    assert "alex@adres.pl" not in taken
+
+
+def test_onet_taken_empty_means_everywhere():
+    """No free suggestions at all = the alias is registered on every domain."""
+    taken = mailcat._onet_taken("admin", [], _ONET_DOMAINS)
+    assert taken == [f"admin@{d}" for d in _ONET_DOMAINS]
 
 
 @pytest.mark.asyncio
