@@ -148,12 +148,39 @@ mailcat on the VPS itself.
 The HTTP-based checks (everything else) work fine from any network and
 do not require Tor.
 
+### Headless Chromium checks
+
+Three checks (`fastmail`, `intpl`, `onet`) drive a real browser, because those
+providers only expose their availability API to page JavaScript. Pyppeteer
+downloads its own Chromium (~150 MB) on the first run, but on a slim Linux box
+that binary still needs system libraries that are usually missing:
+
+	[WARNING] Onet check failed: Chromium/browser issue (Browser closed unexpectedly:
+
+On Debian/Ubuntu, install them once:
+
+	sudo apt-get install -y libnss3 libnspr4 libatk1.0-0t64 \
+	    libatk-bridge2.0-0t64 libatspi2.0-0t64 libxdamage1 libasound2t64 libxres1
+
+(before Ubuntu 24.04 the `t64` suffix is not used: `libatk1.0-0`,
+`libatk-bridge2.0-0`, `libatspi2.0-0`, `libasound2`)
+
+Nothing else needs a browser. If you do not care about these three providers you
+can skip the libraries — the checks fail gracefully with the warning above and
+the rest of the run is unaffected.
+
 ### SOWEL classification
 
 This tool uses the following OSINT techniques:
 - [SOTL-2.2. Search For Accounts On Other Platforms](https://sowel.soxoj.com/other-platform-accounts)
 - [SOTL-6.1. Check Logins Reuse To Find Another Account](https://sowel.soxoj.com/logins-reuse)
 - [SOTL-6.2. Check Nicknames Reuse To Find Another Account](https://sowel.soxoj.com/nicknames-reuse) 
+
+## See also
+
+Looking for accounts rather than emails? [Maigret](https://github.com/soxoj/maigret)
+searches 3000+ sites by username — same input, different output. There's a
+[Telegram bot](https://maigret.app/mc) if you'd rather not install anything.
 
 ## Mentions and articles
 
