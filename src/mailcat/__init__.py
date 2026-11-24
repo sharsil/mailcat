@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+import os
+
+# pyppeteer (pulled in eagerly by requests_html below) pins a Chromium
+# snapshot revision that Google periodically garbage-collects, which then
+# breaks the Chromium-backed checks (int.pl, onet, fastmail) with a
+# "NoSuchKey" download error. Override it with a revision confirmed present
+# on Win_x64/Linux_x64/Mac as of 2026-11-24, unless the user set their own.
+os.environ.setdefault('PYPPETEER_CHROMIUM_REVISION', '1750072')
+
 import aiohttp
 import asyncio
 import argparse
